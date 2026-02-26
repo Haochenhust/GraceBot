@@ -28,11 +28,15 @@ export function normalizeFeishuEvent(body: unknown): UnifiedMessage | null {
 
   // 提取 @提及
   const rawMentions = (message.mentions as Array<Record<string, unknown>>) ?? [];
-  const mentions: Mention[] = rawMentions.map((m) => ({
-    id: (m.id?.key as string) ?? (m.id as string) ?? "",
-    name: (m.name as string) ?? "",
-    isBot: (m.tenant_key as string) !== undefined,
-  }));
+  const mentions: Mention[] = rawMentions.map((m) => {
+    const idObj = m.id as { key?: string } | string | undefined;
+    const id = typeof idObj === "string" ? idObj : (idObj?.key ?? "");
+    return {
+      id,
+      name: (m.name as string) ?? "",
+      isBot: (m.tenant_key as string) !== undefined,
+    };
+  });
 
   return {
     messageId,

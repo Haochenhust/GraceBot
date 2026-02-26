@@ -34,7 +34,10 @@ export class PluginManager {
     if (plugin.routes) {
       for (const route of plugin.routes) {
         const method = route.method.toLowerCase() as "get" | "post";
-        this.app[method](route.path, route.handler as Parameters<Hono["get"]>[1]);
+        (this.app[method] as (path: string, handler: (c: unknown) => Promise<Response>) => void)(
+          route.path,
+          route.handler,
+        );
       }
     }
 

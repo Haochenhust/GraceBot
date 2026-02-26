@@ -49,7 +49,10 @@ export class CentralController {
     messageId: string,
     text: string,
   ): Promise<void> {
-    log.info({ userId, messageId }, "Sending reply");
+    log.info(
+      { userId, messageId, replyLen: text.length },
+      "Sending reply to Feishu",
+    );
     await this.feishuAPI.replyMessage(messageId, text);
   }
 }

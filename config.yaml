@@ -8,13 +8,16 @@ feishu:
   encrypt_key: ${FEISHU_ENCRYPT_KEY}
 
 models:
-  primary: claude-sonnet-4
+  primary: kimi-k2.5
   fallbacks:
+    - claude-sonnet-4
     - claude-haiku-3-5
-    - gpt-4o-mini
-    - doubao-pro
 
   profiles:
+    - name: kimi-key-1
+      provider: kimi
+      apiKey: ${KIMI_API_KEY}
+      endpoint: https://api.moonshot.cn/v1
     - name: anthropic-key-1
       provider: anthropic
       apiKey: ${ANTHROPIC_API_KEY_1}
@@ -29,8 +32,8 @@ models:
       apiKey: ${DOUBAO_API_KEY}
       endpoint: https://ark.cn-beijing.volces.com/api/v3
 
-  compaction_model: claude-haiku-3-5
-  reflection_model: claude-haiku-3-5
+  compaction_model: kimi-k2.5
+  reflection_model: kimi-k2.5
 
 agent:
   max_tool_rounds: 20

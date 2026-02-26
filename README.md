@@ -59,7 +59,17 @@ src/
 data/
 ├── users/{id}/       # 用户隔离数据 (SOUL.md, USER.md, memory, sessions, workspace)
 └── shared/           # 全局共享数据 (skills, plugins)
+
+logs/                  # 运行期日志（自动创建，不提交 Git）
+└── gracebot.log      # 应用日志，JSON 行格式，便于排查
 ```
+
+## 日志与排查
+
+- 日志同时输出到 **控制台** 和 **本地文件** `logs/gracebot.log`（项目根目录下，首次写入时自动创建 `logs/`）。
+- 启动时会在日志中打印 `logFile` 路径，便于在 Mac 上直接打开或 `tail -f logs/gracebot.log` 实时查看。
+- 关键节点会打点：飞书收消息、任务入队、Kimi 响应、回复发送等，便于排查「发消息无回复」或超时问题。
+- 可通过环境变量 `LOG_LEVEL=debug` 提高详细度（默认 `info`）。
 
 ## License
 

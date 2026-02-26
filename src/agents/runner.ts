@@ -49,9 +49,10 @@ export class AgentRunner {
     for (let round = 0; round < this.maxToolRounds; round++) {
       await this.hookBus.emit("before-llm-call", { messages, round });
 
+      const tools = context.tools.length > 0 ? this.toolRegistry.toLLMTools() : [];
       let response: LLMResponse;
       try {
-        response = await this.modelRouter.call(messages);
+        response = await this.modelRouter.call(messages, { tools });
         totalTokens.input += response.usage.input;
         totalTokens.output += response.usage.output;
       } catch (error) {

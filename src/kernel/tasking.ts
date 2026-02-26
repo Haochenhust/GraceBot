@@ -68,6 +68,19 @@ export class Tasking {
       };
     }
 
+    const replyPreview =
+      result.text.length > 100 ? `${result.text.slice(0, 100)}…` : result.text;
+    log.info(
+      {
+        userId,
+        messageId: message.messageId,
+        replyLen: result.text.length,
+        toolCallsCount: result.toolCalls.length,
+        replyPreview: replyPreview || "(empty)",
+      },
+      "Task done, sending reply to Feishu",
+    );
+
     await this.sessionManager.appendHistory(
       userId,
       session.id,

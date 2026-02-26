@@ -252,7 +252,7 @@ export interface AppConfig {
 
 export interface AuthProfile {
   name: string;
-  provider: "anthropic" | "openai" | "volcengine";
+  provider: "anthropic" | "openai" | "volcengine" | "kimi";
   apiKey: string;
   endpoint?: string;
 }

@@ -1,5 +1,5 @@
 import { loadConfig } from "./shared/config.js";
-import { createLogger } from "./shared/logger.js";
+import { createLogger, getLogFilePath } from "./shared/logger.js";
 import { createGateway } from "./gateway/index.js";
 import { FeishuAPI } from "./gateway/feishu-api.js";
 import { CentralController } from "./kernel/central-controller.js";
@@ -93,8 +93,8 @@ async function main() {
   );
   tasking.setCentralController(centralController);
 
-  // ── Gateway ──
-  const app = createGateway(centralController);
+  // ── Gateway（飞书长连接 + HTTP 健康检查）──
+  const app = createGateway(centralController, config.feishu);
 
   // ── Plugins ──
   const pluginManager = new PluginManager(toolRegistry, hookBus, app);
@@ -102,7 +102,10 @@ async function main() {
 
   // ── Start server ──
   const port = config.server.port;
-  log.info({ port }, "GraceBot is ready");
+  log.info(
+    { port, logFile: getLogFilePath() },
+    "GraceBot is ready (logs also written to file)",
+  );
 
   Bun.serve({
     port,
