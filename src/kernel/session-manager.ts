@@ -1,5 +1,5 @@
 import { createLogger } from "../shared/logger.js";
-import { generateId, readJSON, writeJSON } from "../shared/utils.js";
+import { generateId, readJSON, writeJSON, initUserSpace } from "../shared/utils.js";
 import type {
   Session,
   HistoryMessage,
@@ -65,6 +65,8 @@ export class SessionManager {
   }
 
   private async createNew(userId: string): Promise<Session> {
+    await initUserSpace(userId);
+
     const session: Session = {
       id: generateId(),
       userId,
