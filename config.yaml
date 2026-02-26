@@ -1,0 +1,41 @@
+server:
+  port: 3000
+
+feishu:
+  app_id: ${FEISHU_APP_ID}
+  app_secret: ${FEISHU_APP_SECRET}
+  verification_token: ${FEISHU_VERIFICATION_TOKEN}
+  encrypt_key: ${FEISHU_ENCRYPT_KEY}
+
+models:
+  primary: claude-sonnet-4
+  fallbacks:
+    - claude-haiku-3-5
+    - gpt-4o-mini
+    - doubao-pro
+
+  profiles:
+    - name: anthropic-key-1
+      provider: anthropic
+      apiKey: ${ANTHROPIC_API_KEY_1}
+    - name: anthropic-key-2
+      provider: anthropic
+      apiKey: ${ANTHROPIC_API_KEY_2}
+    - name: openai-key-1
+      provider: openai
+      apiKey: ${OPENAI_API_KEY}
+    - name: doubao-key-1
+      provider: volcengine
+      apiKey: ${DOUBAO_API_KEY}
+      endpoint: https://ark.cn-beijing.volces.com/api/v3
+
+  compaction_model: claude-haiku-3-5
+  reflection_model: claude-haiku-3-5
+
+agent:
+  max_tool_rounds: 20
+  session_timeout_minutes: 30
+
+queue:
+  concurrency: 2
+  retries: 1
