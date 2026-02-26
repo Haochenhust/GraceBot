@@ -15,18 +15,18 @@ import { MemoryManager } from "./memory/memory-manager.js";
 import { MockEmbedding } from "./memory/embedding.js";
 import { SkillLoader } from "./skills/skill-loader.js";
 import { HookBus } from "./plugins/hook-bus.js";
-import { PluginManager } from "./plugins/plugin-manager.js";
-import { cronPlugin } from "./plugins/builtin/cron-plugin.js";
+// import { PluginManager } from "./plugins/plugin-manager.js";
+// import { cronPlugin } from "./plugins/builtin/cron-plugin.js";
 
-import { execTool } from "./tools/exec.js";
-import { fileReadTool } from "./tools/file-read.js";
-import { fileWriteTool } from "./tools/file-write.js";
-import { fileEditTool } from "./tools/file-edit.js";
-import { webSearchTool } from "./tools/web-search.js";
-import { webFetchTool } from "./tools/web-fetch.js";
-import { mcpCallTool } from "./tools/mcp-call.js";
-import { createMemoryReadTool } from "./tools/memory-read.js";
-import { createMemoryWriteTool } from "./tools/memory-write.js";
+// import { execTool } from "./tools/exec.js";
+// import { fileReadTool } from "./tools/file-read.js";
+// import { fileWriteTool } from "./tools/file-write.js";
+// import { fileEditTool } from "./tools/file-edit.js";
+// import { webSearchTool } from "./tools/web-search.js";
+// import { webFetchTool } from "./tools/web-fetch.js";
+// import { mcpCallTool } from "./tools/mcp-call.js";
+// import { createMemoryReadTool } from "./tools/memory-read.js";
+// import { createMemoryWriteTool } from "./tools/memory-write.js";
 
 const log = createLogger("main");
 
@@ -43,17 +43,17 @@ async function main() {
   const memoryManager = new MemoryManager(embedding);
   const skillLoader = new SkillLoader();
 
-  // ── Tool Registry ──
+  // ── Tool Registry（今日仅测通回复链路，不注册任何工具）──
   const toolRegistry = new ToolRegistry();
-  toolRegistry.register(execTool);
-  toolRegistry.register(fileReadTool);
-  toolRegistry.register(fileWriteTool);
-  toolRegistry.register(fileEditTool);
-  toolRegistry.register(webSearchTool);
-  toolRegistry.register(webFetchTool);
-  toolRegistry.register(mcpCallTool);
-  toolRegistry.register(createMemoryReadTool(memoryManager));
-  toolRegistry.register(createMemoryWriteTool(memoryManager));
+  // toolRegistry.register(execTool);
+  // toolRegistry.register(fileReadTool);
+  // toolRegistry.register(fileWriteTool);
+  // toolRegistry.register(fileEditTool);
+  // toolRegistry.register(webSearchTool);
+  // toolRegistry.register(webFetchTool);
+  // toolRegistry.register(mcpCallTool);
+  // toolRegistry.register(createMemoryReadTool(memoryManager));
+  // toolRegistry.register(createMemoryWriteTool(memoryManager));
 
   // ── Agent ──
   const modelRouter = new ModelRouter({
@@ -96,9 +96,9 @@ async function main() {
   // ── Gateway（飞书长连接 + HTTP 健康检查）──
   const app = createGateway(centralController, config.feishu);
 
-  // ── Plugins ──
-  const pluginManager = new PluginManager(toolRegistry, hookBus, app);
-  pluginManager.register(cronPlugin);
+  // ── Plugins（今日不启用）──
+  // const pluginManager = new PluginManager(toolRegistry, hookBus, app);
+  // pluginManager.register(cronPlugin);
 
   // ── Start server ──
   const port = config.server.port;
