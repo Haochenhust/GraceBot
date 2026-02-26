@@ -121,7 +121,7 @@ export class ModelRouter {
       model,
       messages: toOpenAIMessages(messages),
       max_tokens: 8192,
-      temperature: 0.7,
+      temperature: 1, // Kimi K2.5 仅支持 temperature=1
     };
     if (tools.length > 0) {
       body.tools = tools.map((t) => ({
