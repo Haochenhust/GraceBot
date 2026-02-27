@@ -1,4 +1,4 @@
-# ClawBot 技术方案
+# GraceBot 技术方案
 
 > 一个为自己打造的 AI 助理 —— 借 OpenClaw 的灵魂，走 TELEGENT 的路
 
@@ -30,19 +30,19 @@
 
 ### 一句话定位
 
-ClawBot 是一个 **self-hosted 的个人 AI 助理**，通过飞书机器人接入，能够执行真实任务（Shell 命令、文件操作、网络搜索等），并拥有持久记忆和可迭代的技能体系。
+GraceBot 是一个 **self-hosted 的个人 AI 助理**，通过飞书机器人接入，能够执行真实任务（Shell 命令、文件操作、网络搜索等），并拥有持久记忆和可迭代的技能体系。
 
 ### 为什么要自己做
 
 - 作为 Agent 开发工程师，需要深入理解每一层技术细节
-- OpenClaw 面向所有用户，设计臃肿；ClawBot 只为自己服务，可以大刀阔斧砍功能
+- OpenClaw 面向所有用户，设计臃肿；GraceBot 只为自己服务，可以大刀阔斧砍功能
 - 不满意的地方可以随时改，不用等上游合并 PR
 
 ### 设计原则
 
 ```mermaid
 mindmap
-  root((ClawBot 设计原则))
+  root((GraceBot 设计原则))
     核心精简
       只保留真正用到的模块
       不做多渠道抽象
@@ -72,7 +72,7 @@ mindmap
 
 **砍掉的赘肉**：
 - 多渠道抽象层（只用飞书）
-- WebSocket 实时协议（飞书走 Webhook 回调）
+- WebSocket 实时协议（飞书走长连接，无需自建 Webhook）
 - CLI / Web UI / macOS App / iOS App 客户端
 - Node 设备系统（摄像头/屏幕控制）
 - 复杂的安全审批体系（个人使用，信任自己的 Agent）
@@ -90,10 +90,10 @@ graph TB
         FeishuBot["飞书机器人"]
     end
 
-    subgraph ClawBot["ClawBot 进程 (PM2 守护)"]
+    subgraph GraceBot["GraceBot 进程 (PM2 守护)"]
         subgraph GatewayLayer["Gateway 层"]
-            HonoHTTP["Hono HTTP Server\n:3000"]
-            WebhookHandler["Webhook Handler\n飞书消息解析 + 验证"]
+            HonoHTTP["Hono HTTP Server\n:3000 /health"]
+            FeishuWS["feishu-ws\n飞书长连接 (WSClient)"]
             Normalizer["消息归一化\nFeishuEvent -> UnifiedMessage"]
         end
 
@@ -138,9 +138,8 @@ graph TB
 
     FeishuUser1 -->|"发消息"| FeishuBot
     FeishuUser2 -->|"发消息"| FeishuBot
-    FeishuBot -->|"Webhook POST"| HonoHTTP
-    HonoHTTP --> WebhookHandler
-    WebhookHandler --> Normalizer
+    FeishuBot -->|"长连接推送"| FeishuWS
+    FeishuWS --> Normalizer
     Normalizer --> CentralCtrl
 
     CentralCtrl --> SessionMgr
@@ -170,7 +169,7 @@ graph TB
 ```mermaid
 graph LR
     subgraph Decision1["决策 1: 单渠道直连"]
-        D1A["飞书 Webhook\n直接进 Gateway"]
+        D1A["飞书长连接 (WSClient)\n直接进 Gateway"]
         D1B["不需要 ChannelManager\n不需要适配器模式"]
     end
 
@@ -190,12 +189,12 @@ graph LR
 ## 3. 目录结构
 
 ```
-clawbot/
+gracebot/
 ├── src/
 │   ├── gateway/                    # I/O 层：接收飞书消息
-│   │   ├── index.ts                # Hono HTTP 服务入口
-│   │   ├── feishu-webhook.ts       # 飞书 Webhook 处理 + 签名验证
-│   │   ├── feishu-api.ts           # 飞书 API 封装 (发消息/上传文件等)
+│   │   ├── index.ts                # Hono 入口、/health、启动飞书长连接
+│   │   ├── feishu-ws.ts            # 飞书长连接 (WSClient)，接收 im.message.receive_v1
+│   │   ├── feishu-api.ts           # 飞书 API 封装 (发消息等)
 │   │   └── normalizer.ts           # 飞书事件 → UnifiedMessage 归一化
 │   │
 │   ├── kernel/                     # 核心调度层
@@ -282,25 +281,21 @@ clawbot/
 
 ### 4.1 Gateway — I/O 层
 
-Gateway 是系统的入口，职责单一：**接收飞书 Webhook → 归一化 → 交给 Kernel**。
+Gateway 是系统的入口，职责单一：**通过飞书长连接接收消息 → 归一化 → 交给 Kernel**；发消息由 Kernel 通过 `FeishuAPI` 调用飞书开放 API 完成。
 
 ```mermaid
 flowchart LR
     subgraph FeishuPlatform["飞书开放平台"]
-        Event["Webhook Event\nPOST /webhook/feishu"]
+        Event["长连接推送\nim.message.receive_v1"]
     end
 
     subgraph GatewayInner["Gateway"]
-        Verify["签名验证\nVerification Token\nor Encrypt Key"]
-        Parse["事件解析\n区分 challenge / message / 其他"]
+        WS["feishu-ws\nWSClient 长连接"]
         Normalize["消息归一化\nFeishu Event → UnifiedMessage"]
-        Dedup["幂等去重\nevent_id 缓存"]
     end
 
-    Event --> Verify
-    Verify --> Parse
-    Parse --> Dedup
-    Dedup --> Normalize
+    Event --> WS
+    WS --> Normalize
     Normalize -->|"UnifiedMessage"| Kernel["Kernel\nCentralController"]
 ```
 
@@ -308,40 +303,15 @@ flowchart LR
 
 ```typescript
 // src/gateway/index.ts
-import { Hono } from "hono";
-
-const app = new Hono();
-
-// 飞书 Webhook 入口
-app.post("/webhook/feishu", async (c) => {
-  const body = await c.req.json();
-
-  // 1. URL Verification (首次配置回调时飞书发的验证请求)
-  if (body.type === "url_verification") {
-    return c.json({ challenge: body.challenge });
-  }
-
-  // 2. 签名验证
-  if (!verifySignature(c.req, body)) {
-    return c.json({ error: "invalid signature" }, 403);
-  }
-
-  // 3. 幂等去重 (飞书可能重试推送)
-  if (eventCache.has(body.header.event_id)) {
-    return c.json({ ok: true });
-  }
-  eventCache.set(body.header.event_id, Date.now());
-
-  // 4. 归一化 + 派发给 Kernel (异步，不阻塞 Webhook 响应)
-  const message = normalizeFeishuEvent(body);
-  if (message) {
-    centralController.dispatch(message);  // fire-and-forget
-  }
-
-  // 5. 立即返回 200，飞书要求 3 秒内响应
-  return c.json({ ok: true });
-});
+export function createGateway(controller: CentralController, feishuConfig: AppConfig["feishu"]) {
+  const app = new Hono();
+  app.get("/health", (c) => c.json({ status: "ok", timestamp: Date.now() }));
+  startFeishuLongConnection(feishuConfig, controller);  // 长连接，无需 Webhook 路由
+  return app;
+}
 ```
+
+长连接在 `feishu-ws.ts` 中通过 `@larksuiteoapi/node-sdk` 的 `WSClient` 建立，注册 `im.message.receive_v1` 后，收到事件即调用 `normalizeFeishuEvent` 转为 `UnifiedMessage`，再 `controller.dispatch(message)` 交给 Kernel。无需公网、无需签名验证与 URL 校验。
 
 #### 消息归一化
 
@@ -698,7 +668,7 @@ class AgentRunner {
     }
 
     return {
-      text: "[ClawBot] 工具调用次数超过限制，已停止执行。",
+      text: "[GraceBot] 工具调用次数超过限制，已停止执行。",
       toolCalls: toolCallRecords,
       tokensUsed: totalTokens,
     };
@@ -757,7 +727,7 @@ class PromptBuilder {
 
     // 基础身份
     sections.push(`# 身份
-你是 ClawBot，一个强大的个人 AI 助理。
+你是 GraceBot，一个强大的个人 AI 助理。
 当前时间：${new Date().toISOString()}
 `);
 
@@ -804,7 +774,7 @@ class PromptBuilder {
 
 ```mermaid
 mindmap
-  root((ClawBot Tools))
+  root((GraceBot Tools))
     Files_文件系统
       file_read
       file_write
@@ -943,7 +913,7 @@ graph LR
 
 ### 4.5 Memory System — 记忆系统
 
-记忆系统是 ClawBot 区别于普通聊天 bot 的核心能力。借鉴 OpenClaw 的思路，Agent **主动决定** 什么值得记住。
+记忆系统是 GraceBot 区别于普通聊天 bot 的核心能力。借鉴 OpenClaw 的思路，Agent **主动决定** 什么值得记住。
 
 ```mermaid
 graph TB
@@ -1167,7 +1137,7 @@ flowchart LR
 
 ```typescript
 // src/plugins/plugin-manager.ts
-interface ClawBotPlugin {
+interface GraceBotPlugin {
   name: string;
   version: string;
 
@@ -1203,7 +1173,7 @@ interface ClawBotPlugin {
 
 ```typescript
 // src/plugins/builtin/cron-plugin.ts
-const cronPlugin: ClawBotPlugin = {
+const cronPlugin: GraceBotPlugin = {
   name: "cron",
   version: "1.0.0",
 
@@ -1242,11 +1212,11 @@ graph LR
 
 #### SOUL.md — Agent 人格定义
 
-SOUL.md 定义了 Agent 面对这个特定用户时的人格。不同用户可以拥有不同的 SOUL.md，让同一个 ClawBot 对不同人展现不同风格。
+SOUL.md 定义了 Agent 面对这个特定用户时的人格。不同用户可以拥有不同的 SOUL.md，让同一个 GraceBot 对不同人展现不同风格。
 
 ```markdown
 <!-- data/users/{id}/SOUL.md 示例 -->
-# ClawBot 人格设定
+# GraceBot 人格设定
 
 你是一个高效、直接、有幽默感的 AI 助理。
 
@@ -1381,44 +1351,52 @@ class ModelRouter {
 
 ## 5. 飞书接入详细设计
 
+Gateway 层负责与飞书的对接，当前实现采用**飞书官方 SDK 的长连接模式**接收消息，无需公网暴露、无需配置 Webhook URL 与签名验证。发消息则通过飞书开放 API（由 `FeishuAPI` 封装）完成。
+
 ### 飞书机器人配置要求
 
 在飞书开放平台创建企业自建应用，开启机器人能力：
 
-- 事件订阅 URL：`https://{your-domain}/webhook/feishu`
-- 订阅事件：`im.message.receive_v1`（接收消息）
-- 权限：`im:message`（读取消息）、`im:message:send_as_bot`（发送消息）
+- **接入方式**：事件订阅 → 选择 **长连接模式**（无需配置事件请求地址）
+- **订阅事件**：`im.message.receive_v1`（接收消息）
+- **权限**：`im:message`（读取消息）、`im:message:send_as_bot`（发送消息）
+- **配置项**：在应用凭证中获取 `app_id`、`app_secret`，写入本地配置（如 `config.feishu`）
 
-### Webhook 事件处理流程
+参考文档：[飞书事件订阅 - 长连接模式](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/event-subscription-guide/long-connection-mode)
+
+### Gateway 目录与职责
+
+| 文件 | 职责 |
+|------|------|
+| `gateway/index.ts` | 创建 Hono 应用、注册 `/health`、启动飞书长连接；不暴露 Webhook 路由 |
+| `gateway/feishu-ws.ts` | 使用 `@larksuiteoapi/node-sdk` 的 `WSClient` 建立长连接，注册 `im.message.receive_v1` 事件，归一化后调用 `controller.dispatch` |
+| `gateway/normalizer.ts` | 将飞书事件体转为统一的 `UnifiedMessage`（messageId、userId、chatId、chatType、text、mentions、timestamp） |
+| `gateway/feishu-api.ts` | 飞书开放 API 封装：`tenant_access_token` 获取与刷新、`replyMessage`、`sendMessage`，供 Kernel 发消息使用 |
+
+### 长连接事件处理流程
 
 ```mermaid
 sequenceDiagram
     participant User as 飞书用户
     participant Feishu as 飞书服务器
-    participant GW as ClawBot Gateway
+    participant WS as feishu-ws (WSClient)
+    participant GW as Gateway / Normalizer
     participant Kernel as Kernel
     participant Agent as AgentRunner
     participant LLM as LLM API
 
     User->>Feishu: 发送消息给机器人
-    Feishu->>GW: POST /webhook/feishu (Event)
-
-    Note over GW: 签名验证 + 幂等去重
-    GW-->>Feishu: 200 OK (3秒内必须响应)
-
-    Note over GW: 异步处理开始
+    Feishu->>WS: 长连接推送 (im.message.receive_v1)
+    WS->>GW: normalizeFeishuEvent(event)
     GW->>Kernel: dispatch(UnifiedMessage)
-    Kernel->>Kernel: 获取/创建 Session
-    Kernel->>Kernel: Bunqueue 入队
-    Kernel->>Kernel: Bunqueue 出队 → Tasking
 
-    Note over Kernel: Tasking 组装上下文
+    Note over Kernel: 获取/创建 Session、Bunqueue 入队
+    Kernel->>Kernel: Bunqueue 出队 → Tasking
     Kernel->>Agent: run(AgentContext)
 
     loop ReAct 循环
         Agent->>LLM: API Call (messages + tools)
         LLM-->>Agent: response
-
         alt 需要工具
             Agent->>Agent: 执行工具
             Agent->>LLM: 带工具结果继续
@@ -1426,118 +1404,65 @@ sequenceDiagram
     end
 
     Agent-->>Kernel: AgentResult
-    Kernel->>Feishu: POST /open-apis/im/v1/messages/:message_id/reply
+    Kernel->>Feishu: FeishuAPI.replyMessage / sendMessage
     Feishu->>User: 回复消息
 ```
 
-### 飞书消息类型处理
+### 消息归一化（normalizer）
+
+当前实现只处理**文本消息**，从飞书事件中解析出 `event.message`、`event.sender`，得到会话与发送者信息，并从 `message.content` 的 JSON 中取出 `text`，以及可选的 `mentions` 列表，映射为 `UnifiedMessage`：
 
 ```typescript
-// src/gateway/feishu-webhook.ts
+// src/gateway/normalizer.ts
 
-function normalizeFeishuEvent(body: FeishuEventBody): UnifiedMessage | null {
-  const event = body.event;
-  const msg = event.message;
+export function normalizeFeishuEvent(body: unknown): UnifiedMessage | null {
+  const event = (body as Record<string, unknown>).event as Record<string, unknown> | undefined;
+  if (!event) return null;
 
-  // 只处理文本和富文本消息
-  const content = JSON.parse(msg.content);
+  const message = event.message as Record<string, unknown> | undefined;
+  if (!message) return null;
+
+  const sender = event.sender as Record<string, unknown> | undefined;
+  const senderId = sender?.sender_id as Record<string, unknown> | undefined;
+
+  const chatId = (message.chat_id as string) ?? "";
+  const chatType = (message.chat_type as string) === "group" ? "group" : "p2p";
+  const messageId = (message.message_id as string) ?? "";
+  const userId = (senderId?.open_id as string) ?? "";
 
   let text = "";
-  let attachments: Attachment[] = [];
-
-  switch (msg.message_type) {
-    case "text":
-      text = content.text;
-      break;
-    case "post":  // 富文本
-      text = extractTextFromPost(content);
-      attachments = extractImagesFromPost(content);
-      break;
-    case "image":
-      attachments = [{ type: "image", key: content.image_key }];
-      text = "[用户发送了一张图片]";
-      break;
-    case "file":
-      attachments = [{ type: "file", key: content.file_key, name: content.file_name }];
-      text = `[用户发送了文件: ${content.file_name}]`;
-      break;
-    default:
-      return null; // 不支持的消息类型，忽略
+  try {
+    const content = JSON.parse((message.content as string) ?? "{}");
+    text = content.text ?? "";
+  } catch {
+    text = "";
   }
 
+  const rawMentions = (message.mentions as Array<Record<string, unknown>>) ?? [];
+  const mentions: Mention[] = rawMentions.map((m) => ({
+    id: typeof m.id === "string" ? m.id : (m.id?.key ?? ""),
+    name: (m.name as string) ?? "",
+    isBot: (m.tenant_key as string) !== undefined,
+  }));
+
   return {
-    messageId: msg.message_id,
-    userId: event.sender.sender_id.open_id,
-    chatId: msg.chat_id,
-    chatType: msg.chat_type === "p2p" ? "p2p" : "group",
-    text,
-    mentions: msg.mentions?.map(m => ({
-      userId: m.id.open_id,
-      name: m.name,
-      isBot: m.id.open_id === BOT_OPEN_ID,
-    })),
-    attachments,
-    timestamp: parseInt(msg.create_time),
+    messageId, userId, chatId, chatType: chatType as "p2p" | "group",
+    text, mentions: mentions.length > 0 ? mentions : undefined, timestamp: Date.now(),
   };
 }
 ```
 
-### 飞书 API 封装
+富文本、图片、文件等类型当前未在 normalizer 中实现，如需支持可在此扩展。
 
-```typescript
-// src/gateway/feishu-api.ts
-class FeishuAPI {
-  private tenantAccessToken: string = "";
-  private tokenExpiresAt: number = 0;
+### 飞书 API 封装（FeishuAPI）
 
-  // 确保 token 有效
-  private async ensureToken(): Promise<void> {
-    if (Date.now() < this.tokenExpiresAt - 60_000) return;
+`FeishuAPI` 负责调用飞书开放接口发消息，被 Kernel（如 CentralController）持有并用于回复用户：
 
-    const res = await fetch(
-      "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          app_id: config.feishu.appId,
-          app_secret: config.feishu.appSecret,
-        }),
-      }
-    );
-    const data = await res.json();
-    this.tenantAccessToken = data.tenant_access_token;
-    this.tokenExpiresAt = Date.now() + data.expire * 1000;
-  }
+- **鉴权**：`ensureToken()` 内部使用 `app_id`、`app_secret` 请求 `auth/v3/tenant_access_token/internal`，在内存中缓存 `tenant_access_token`，在过期前约 1 分钟提前刷新。
+- **回复消息**：`replyMessage(messageId, text)` 调用 `im/v1/messages/:message_id/reply`，以当前消息为上下文回复。
+- **主动发消息**：`sendMessage(chatId, text, msgType)` 调用 `im/v1/messages?receive_id_type=chat_id`，向指定会话发消息。
 
-  // 回复消息
-  async replyMessage(messageId: string, text: string): Promise<void> {
-    await this.ensureToken();
-
-    // 飞书单条消息长度限制，超长需要分段
-    const chunks = splitMessageIfNeeded(text, 4000);
-
-    for (let i = 0; i < chunks.length; i++) {
-      const endpoint = i === 0
-        ? `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/reply`
-        : `https://open.feishu.cn/open-apis/im/v1/messages`;
-
-      await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${this.tenantAccessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          msg_type: "text",
-          content: JSON.stringify({ text: chunks[i] }),
-          ...(i > 0 ? { receive_id: messageId } : {}),
-        }),
-      });
-    }
-  }
-}
-```
+实现位于 `src/gateway/feishu-api.ts`，与上述行为一致；超长消息分段、富文本等可按需求在 FeishuAPI 内扩展。
 
 ---
 
@@ -1549,7 +1474,7 @@ class FeishuAPI {
 flowchart TB
     Start["飞书用户发消息\n'帮我查一下最近 Bun 的更新日志'"]
 
-    Start --> GW["Gateway\n签名验证 + 归一化"]
+    Start --> GW["Gateway\n长连接 + 归一化"]
     GW --> CC["CentralController\n识别用户 + 会话路由"]
     CC --> Q["Bunqueue 入队"]
     Q --> TSK["Tasking 出队执行"]
@@ -1649,7 +1574,7 @@ flowchart TB
 module.exports = {
   apps: [
     {
-      name: "clawbot",
+      name: "gracebot",
       script: "src/index.ts",
       interpreter: "bun",
       watch: false,
@@ -1669,12 +1594,12 @@ module.exports = {
 
 ## 8. 与 OpenClaw 的差异对比
 
-| 维度 | OpenClaw | ClawBot |
+| 维度 | OpenClaw | GraceBot |
 |------|----------|---------|
 | 目标用户 | 所有人 | 自己 + 身边的人 |
 | 渠道 | WhatsApp/Telegram/Slack/Discord/iMessage/WebChat | 飞书 only |
 | 客户端 | CLI + Web UI + macOS App + iOS App | 无 (飞书即客户端) |
-| 通信协议 | WebSocket (自定义 Wire Protocol) | HTTP Webhook (飞书原生) |
+| 通信协议 | WebSocket (自定义 Wire Protocol) | 飞书长连接 (WSClient) + HTTP API |
 | 运行时 | Node.js ≥22 | Bun |
 | HTTP 框架 | Express 5 | Hono |
 | 任务队列 | 无 (同步处理) | Bunqueue |
