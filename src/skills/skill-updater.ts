@@ -6,10 +6,13 @@ import type { SessionManager } from "../kernel/session-manager.js";
 
 const log = createLogger("skill-updater");
 
-const REFLECTION_PROMPT = `You are a skill optimization assistant. Analyze recent conversations and current skill definitions; decide if any improvement is needed.
-If you have suggestions, respond with JSON only:
-{ "suggestions": [{ "skillName": "xxx", "action": "update|create", "content": "new skill content in English" }] }
-If no suggestions, respond with: { "suggestions": [] }`;
+const REFLECTION_PROMPT = `You are a skill optimization assistant. Analyze the recent conversations and current skill definitions; decide if any skill needs improvement.
+Rules:
+- Only suggest changes that are clearly supported by the recent conversation patterns.
+- Keep skill content concise, actionable, and in English.
+- Respond with JSON only:
+{ "suggestions": [{ "skillName": "xxx", "action": "update|create", "content": "full new skill content in English" }] }
+If no changes are needed, respond with: { "suggestions": [] }`;
 
 interface SkillSuggestion {
   skillName: string;
@@ -37,6 +40,25 @@ export class SkillUpdater {
 
     const currentSkills = await this.skillLoader.loadAll(userId);
 
+    // Load recent history from the latest session for context
+    let recentHistory: Array<{ role: string; content: string }> = [];
+    try {
+      const sessions = await this.sessionManager.listSessions(userId);
+      if (sessions.length > 0) {
+        const latestSession = sessions[sessions.length - 1];
+        const history = await this.sessionManager.getHistory(userId, latestSession.id);
+        // Last 10 turns
+        recentHistory = history
+          .slice(-10)
+          .map((h) => ({
+            role: h.role,
+            content: typeof h.content === "string" ? h.content : JSON.stringify(h.content),
+          }));
+      }
+    } catch (err) {
+      log.warn({ err }, "Could not load recent history for skill reflection");
+    }
+
     try {
       const reflection = await this.modelRouter.call(
         [
@@ -46,8 +68,10 @@ export class SkillUpdater {
             content: JSON.stringify({
               currentSkills: currentSkills.map((s) => ({
                 name: s.name,
+                description: s.description,
                 content: s.content,
               })),
+              recentConversation: recentHistory,
             }),
           },
         ],
@@ -74,8 +98,12 @@ export class SkillUpdater {
     userId: string,
     suggestion: SkillSuggestion,
   ): Promise<void> {
-    const path = `data/users/${userId}/skills/${suggestion.skillName}.md`;
-    await writeTextFile(path, suggestion.content);
+    // Write in OpenClaw format: directory + SKILL.md
+    const dir = `data/users/${userId}/skills/${suggestion.skillName}`;
+    const content = suggestion.content.startsWith("---")
+      ? suggestion.content
+      : `---\nname: ${suggestion.skillName}\ndescription: Auto-updated skill\n---\n\n${suggestion.content}`;
+    await writeTextFile(`${dir}/SKILL.md`, content);
     log.info({ userId, skill: suggestion.skillName }, "Skill updated");
   }
 }

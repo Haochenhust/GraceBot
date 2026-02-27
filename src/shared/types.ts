@@ -163,6 +163,7 @@ export interface VectorEntry {
 
 export interface Skill {
   name: string;
+  description?: string;
   content: string;
   source: "global" | "user";
 }
@@ -260,6 +261,18 @@ export interface AppConfig {
   queue: {
     concurrency: number;
     retries: number;
+  };
+  embedding?: {
+    /** API key for the embedding service */
+    apiKey: string;
+    /** Model name, e.g. "text-embedding-3-small" or "moonshot-v1-8k" */
+    model?: string;
+    /** Base URL of an OpenAI-compatible embedding endpoint */
+    endpoint?: string;
+  };
+  search?: {
+    /** Tavily API key */
+    tavilyApiKey?: string;
   };
 }
 

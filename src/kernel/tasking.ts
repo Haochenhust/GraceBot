@@ -57,11 +57,14 @@ export class Tasking {
       sessionId: session.id,
     };
 
+    await this.hookBus.emit("before-agent", { userId, context });
+
     let result: AgentResult;
     try {
       result = await this.agentRunner.run(context);
     } catch (err) {
       log.error({ err, userId }, "Agent execution failed");
+      await this.hookBus.emit("on-error", { error: err, userId });
       result = {
         text: "[GraceBot] 处理消息时发生错误，请稍后再试。",
         toolCalls: [],

@@ -43,3 +43,14 @@ agent:
 queue:
   concurrency: 2
   retries: 1
+
+# Embedding service (OpenAI-compatible).
+# Moonshot (Kimi) endpoint is compatible with the OpenAI embedding API.
+# Reuses KIMI_API_KEY; switch endpoint/model to use OpenAI if preferred.
+embedding:
+  apiKey: ${KIMI_API_KEY}
+  model: moonshot-v1-8k
+  endpoint: https://api.moonshot.cn/v1
+
+search:
+  tavilyApiKey: ${TAVILY_API_KEY}

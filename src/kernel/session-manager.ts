@@ -54,6 +54,12 @@ export class SessionManager {
     return this.createNew(userId, chatId, rootId);
   }
 
+  async listSessions(userId: string): Promise<Session[]> {
+    const indexPath = `data/users/${userId}/sessions/_index.json`;
+    const sessions = (await readJSON<Session[]>(indexPath)) ?? [];
+    return sessions.sort((a, b) => a.createdAt - b.createdAt);
+  }
+
   async getHistory(
     userId: string,
     sessionId: string,

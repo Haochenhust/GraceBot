@@ -13,7 +13,7 @@ import { ModelRouter } from "./agents/model-router.js";
 import { Compaction } from "./agents/compaction.js";
 import { ToolRegistry } from "./tools/registry.js";
 import { MemoryManager } from "./memory/memory-manager.js";
-import { MockEmbedding } from "./memory/embedding.js";
+import { createEmbeddingService } from "./memory/embedding.js";
 import { SkillLoader } from "./skills/skill-loader.js";
 import { HookBus } from "./plugins/hook-bus.js";
 import { PluginManager } from "./plugins/plugin-manager.js";
@@ -25,7 +25,7 @@ import { execTool } from "./tools/exec.js";
 import { fileReadTool } from "./tools/file-read.js";
 import { fileWriteTool } from "./tools/file-write.js";
 import { fileEditTool } from "./tools/file-edit.js";
-import { webSearchTool } from "./tools/web-search.js";
+import { createWebSearchTool } from "./tools/web-search.js";
 import { webFetchTool } from "./tools/web-fetch.js";
 import { createMemoryReadTool } from "./tools/memory-read.js";
 import { createMemoryWriteTool } from "./tools/memory-write.js";
@@ -41,7 +41,7 @@ async function main() {
   const hookBus = new HookBus();
   const feishuAPI = new FeishuAPI(config.feishu);
   const sessionManager = new SessionManager();
-  const embedding = new MockEmbedding();
+  const embedding = createEmbeddingService(config.embedding ?? {});
   const memoryManager = new MemoryManager(embedding);
   const skillLoader = new SkillLoader();
 
@@ -51,7 +51,7 @@ async function main() {
   toolRegistry.register(fileReadTool);
   toolRegistry.register(fileWriteTool);
   toolRegistry.register(fileEditTool);
-  toolRegistry.register(webSearchTool);
+  toolRegistry.register(createWebSearchTool(config.search?.tavilyApiKey));
   toolRegistry.register(webFetchTool);
   toolRegistry.register(createMemoryReadTool(memoryManager));
   toolRegistry.register(createMemoryWriteTool(memoryManager));

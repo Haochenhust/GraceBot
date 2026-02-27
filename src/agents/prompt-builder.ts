@@ -20,7 +20,10 @@ ${context.tools.length === 0 ? "Reply directly and concisely. Do not call any to
     if (context.skills.length > 0) {
       sections.push("# Skills");
       for (const skill of context.skills) {
-        sections.push(`## ${skill.name}\n${skill.content}`);
+        const header = skill.description
+          ? `## ${skill.name}\n${skill.description}\n\n${skill.content}`
+          : `## ${skill.name}\n${skill.content}`;
+        sections.push(header);
       }
     }
     if (context.memories.length > 0) {
