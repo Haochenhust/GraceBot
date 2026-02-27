@@ -16,6 +16,8 @@ export function normalizeFeishuEvent(body: unknown): UnifiedMessage | null {
   const chatType = (message.chat_type as string) === "group" ? "group" : "p2p";
   const messageId = (message.message_id as string) ?? "";
   const userId = (senderId?.open_id as string) ?? "";
+  const rootId = (message.root_id as string) || undefined;
+  const parentId = (message.parent_id as string) || undefined;
 
   // 提取文本内容
   let text = "";
@@ -44,6 +46,8 @@ export function normalizeFeishuEvent(body: unknown): UnifiedMessage | null {
     chatId,
     chatType: chatType as "p2p" | "group",
     text,
+    rootId,
+    parentId,
     mentions: mentions.length > 0 ? mentions : undefined,
     timestamp: Date.now(),
   };

@@ -39,7 +39,15 @@ export class FeishuAPI {
     return this.tenantAccessToken;
   }
 
-  async replyMessage(messageId: string, text: string): Promise<void> {
+  /**
+   * 回复到指定消息（话题内）。若话题已被用户删除会返回 230019，可降级为向会话发新消息。
+   * @param chatId 可选；当回复失败且错误码为 230019（话题不存在）时，用此 chatId 调用 sendMessage 发到会话
+   */
+  async replyMessage(
+    messageId: string,
+    text: string,
+    options?: { chatId?: string },
+  ): Promise<void> {
     const token = await this.ensureToken();
 
     const res = await fetch(
@@ -57,11 +65,29 @@ export class FeishuAPI {
       },
     );
 
-    if (!res.ok) {
-      const body = await res.text();
-      log.error({ messageId, status: res.status, body }, "Failed to reply");
-      throw new Error(`Feishu reply failed: ${res.status}`);
+    if (res.ok) return;
+
+    const body = await res.text();
+    let code: number | undefined;
+    try {
+      const data = JSON.parse(body) as { code?: number };
+      code = data.code;
+    } catch {
+      /* ignore */
     }
+
+    // 话题已被删除，无法往该话题回复；降级为向会话发新消息
+    if (code === 230019 && options?.chatId) {
+      log.warn(
+        { messageId, chatId: options.chatId },
+        "Topic no longer exists (230019), sending to chat instead",
+      );
+      await this.sendMessage(options.chatId, text);
+      return;
+    }
+
+    log.error({ messageId, status: res.status, body }, "Failed to reply");
+    throw new Error(`Feishu reply failed: ${res.status}`);
   }
 
   async sendMessage(

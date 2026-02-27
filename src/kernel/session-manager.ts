@@ -1,5 +1,6 @@
+import { createHash } from "crypto";
 import { createLogger } from "../shared/logger.js";
-import { generateId, readJSON, writeJSON, initUserSpace } from "../shared/utils.js";
+import { readJSON, writeJSON, initUserSpace } from "../shared/utils.js";
 import type {
   Session,
   HistoryMessage,
@@ -9,23 +10,45 @@ import type {
 
 const log = createLogger("session-manager");
 
+/** 由 chatId + rootId 生成唯一且稳定的 session 文件 id */
+function toSessionId(chatId: string, rootId: string): string {
+  return createHash("sha256")
+    .update(chatId + "\0" + rootId)
+    .digest("hex")
+    .slice(0, 24);
+}
+
 export class SessionManager {
   private sessionTimeoutMs: number;
 
-  constructor(sessionTimeoutMinutes = 30) {
+  constructor(sessionTimeoutMinutes = 180) {
     this.sessionTimeoutMs = sessionTimeoutMinutes * 60 * 1000;
   }
 
-  async getOrCreate(userId: string): Promise<Session> {
-    const latest = await this.getLatestSession(userId);
+  /**
+   * 按话题维度获取或创建会话：同一 (userId, chatId, rootId) 共享一个 Session。
+   * rootId 为话题根消息 ID：若用户在某条消息下回复则来自 message.rootId，否则为新话题，取 message.messageId。
+   */
+  async getOrCreate(
+    userId: string,
+    chatId: string,
+    rootId: string,
+  ): Promise<Session> {
+    await initUserSpace(userId);
 
-    if (latest && Date.now() - latest.lastActiveAt < this.sessionTimeoutMs) {
-      latest.lastActiveAt = Date.now();
-      await this.save(userId, latest);
-      return latest;
+    const id = toSessionId(chatId, rootId);
+    const existing = await this.getSessionByThread(userId, chatId, rootId);
+
+    if (
+      existing &&
+      Date.now() - existing.lastActiveAt < this.sessionTimeoutMs
+    ) {
+      existing.lastActiveAt = Date.now();
+      await this.save(userId, existing);
+      return existing;
     }
 
-    return this.createNew(userId);
+    return this.createNew(userId, chatId, rootId);
   }
 
   async getHistory(
@@ -57,29 +80,46 @@ export class SessionManager {
     );
   }
 
-  private async getLatestSession(userId: string): Promise<Session | null> {
+  private async getSessionByThread(
+    userId: string,
+    chatId: string,
+    rootId: string,
+  ): Promise<Session | null> {
+    const id = toSessionId(chatId, rootId);
     const indexPath = `data/users/${userId}/sessions/_index.json`;
-    const sessions = await readJSON<Session[]>(indexPath);
-    if (!sessions || sessions.length === 0) return null;
-    return sessions[sessions.length - 1];
+    const sessions = (await readJSON<Session[]>(indexPath)) ?? [];
+    return sessions.find((s) => s.id === id) ?? null;
   }
 
-  private async createNew(userId: string): Promise<Session> {
-    await initUserSpace(userId);
-
+  private async createNew(
+    userId: string,
+    chatId: string,
+    rootId: string,
+  ): Promise<Session> {
+    const id = toSessionId(chatId, rootId);
     const session: Session = {
-      id: generateId(),
+      id,
       userId,
+      chatId,
+      rootId,
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
     };
 
     const indexPath = `data/users/${userId}/sessions/_index.json`;
     const sessions = (await readJSON<Session[]>(indexPath)) ?? [];
-    sessions.push(session);
+    const idx = sessions.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      sessions[idx] = session;
+    } else {
+      sessions.push(session);
+    }
     await writeJSON(indexPath, sessions);
 
-    log.info({ userId, sessionId: session.id }, "New session created");
+    log.info(
+      { userId, sessionId: session.id, chatId, rootId },
+      "New session (thread) created",
+    );
     return session;
   }
 

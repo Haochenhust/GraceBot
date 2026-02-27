@@ -18,16 +18,24 @@ export interface UnifiedMessage {
   chatId: string;
   chatType: "p2p" | "group";
   text: string;
+  /** 话题根消息 ID（用户在回复某条消息时由飞书事件提供） */
+  rootId?: string;
+  /** 被直接回复的消息 ID */
+  parentId?: string;
   mentions?: Mention[];
   attachments?: Attachment[];
   timestamp: number;
 }
 
-// ─── Session ───
+// ─── Session（按话题维度：同一话题内多轮对话共享一个 Session） ───
 
 export interface Session {
   id: string;
   userId: string;
+  /** 会话所在群聊/单聊 ID */
+  chatId: string;
+  /** 话题根消息 ID（飞书 Thread 的 root_id；新话题时为首条消息的 message_id） */
+  rootId: string;
   createdAt: number;
   lastActiveAt: number;
 }

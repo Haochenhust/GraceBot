@@ -33,7 +33,13 @@ export class CentralController {
       return;
     }
 
-    const session = await this.sessionManager.getOrCreate(message.userId);
+    // 按话题分会话：同一话题内多轮共享 Session；新消息（无 rootId）则用当前 messageId 作为话题根
+    const rootId = message.rootId ?? message.messageId;
+    const session = await this.sessionManager.getOrCreate(
+      message.userId,
+      message.chatId,
+      rootId,
+    );
 
     await this.scheduling.enqueue({
       type: "agent-task",
@@ -53,6 +59,6 @@ export class CentralController {
       { userId, messageId, replyLen: text.length },
       "Sending reply to Feishu",
     );
-    await this.feishuAPI.replyMessage(messageId, text);
+    await this.feishuAPI.replyMessage(messageId, text, { chatId });
   }
 }

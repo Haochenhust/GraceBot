@@ -37,7 +37,8 @@ models:
 
 agent:
   max_tool_rounds: 20
-  session_timeout_minutes: 30
+  # 按话题分会话：同一话题内 3 小时无新消息则视为过期，需新话题
+  session_timeout_minutes: 180
 
 queue:
   concurrency: 2
