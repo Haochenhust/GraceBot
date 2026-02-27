@@ -64,6 +64,12 @@ logs/                  # 运行期日志（自动创建，不提交 Git）
 └── gracebot.log      # 应用日志，JSON 行格式，便于排查
 ```
 
+## 扩展与插件
+
+- **HookBus**：在 `src/index.ts` 中可订阅 `on-message`、`after-agent`、`after-tool-call` 等生命周期事件；用户画像更新与技能反思已通过 `after-agent` 钩子接入。
+- **PluginManager**：通过 `pluginManager.register(plugin)` 注册插件；插件可提供 `tools`、`hooks`、`routes`、`cron`。内置 `cronPlugin` 为占位骨架，可在此基础上实现定时任务。
+- 配置与模型：`config.yaml` 中配置 `models.primary`、`fallbacks`、`profiles`（多 Key 轮转）、`compaction_model`、`reflection_model`；详见项目内 `dev/GraceBot技术方案.md`。
+
 ## 日志与排查
 
 - 日志同时输出到 **控制台** 和 **本地文件** `logs/gracebot.log`（项目根目录下，首次写入时自动创建 `logs/`）。

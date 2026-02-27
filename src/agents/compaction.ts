@@ -4,8 +4,7 @@ import type { ModelRouter } from "./model-router.js";
 
 const log = createLogger("compaction");
 
-const COMPACTION_PROMPT = `你是一个对话压缩助手。请将以下对话历史压缩为一段简洁的摘要，保留关键信息和上下文。
-用中文输出，保持核心事实和用户意图。`;
+const COMPACTION_PROMPT = `You are a conversation compression assistant. Compress the following conversation history into a concise summary in English. Preserve key information, context, and user intent.`;
 
 export class Compaction {
   constructor(
@@ -39,7 +38,7 @@ export class Compaction {
 
       return [
         systemMsg,
-        { role: "user", content: `[对话历史摘要]\n${summary.text}` },
+        { role: "user", content: `[Conversation summary]\n${summary.text}` },
         ...recentMessages,
       ];
     } catch (err) {

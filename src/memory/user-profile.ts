@@ -5,8 +5,7 @@ import type { ModelRouter } from "../agents/model-router.js";
 
 const log = createLogger("user-profile");
 
-const PROFILE_ANALYSIS_PROMPT = `你是一个用户画像分析助手。根据以下对话内容，提取用户的新特征（偏好、习惯、背景信息等）。
-只输出新发现的特征，格式为 Markdown 列表项。如果没有新发现，输出 "无新发现"。`;
+const PROFILE_ANALYSIS_PROMPT = `You are a user profile analysis assistant. From the conversation below, extract new user traits (preferences, habits, background). Output only the new findings as Markdown list items. If nothing new, output exactly: "No new findings".`;
 
 export class UserProfileUpdater {
   constructor(
@@ -20,7 +19,7 @@ export class UserProfileUpdater {
     result: AgentResult,
   ): Promise<void> {
     const profilePath = `data/users/${userId}/USER.md`;
-    const currentProfile = (await readTextFile(profilePath)) ?? "# 用户画像\n";
+    const currentProfile = (await readTextFile(profilePath)) ?? "# User profile\n";
 
     try {
       const analysis = await this.modelRouter.call(
@@ -28,7 +27,7 @@ export class UserProfileUpdater {
           { role: "system", content: PROFILE_ANALYSIS_PROMPT },
           {
             role: "user",
-            content: `当前用户画像:\n${currentProfile}\n\n最近对话:\n用户: ${message.text}\n助手: ${result.text}`,
+            content: `Current user profile:\n${currentProfile}\n\nRecent exchange:\nUser: ${message.text}\nAssistant: ${result.text}`,
           },
         ],
         { model: this.reflectionModel },
@@ -36,7 +35,7 @@ export class UserProfileUpdater {
 
       if (
         analysis.text &&
-        !analysis.text.includes("无新发现")
+        !analysis.text.includes("No new findings")
       ) {
         const updated = currentProfile + "\n" + analysis.text;
         await writeTextFile(profilePath, updated);

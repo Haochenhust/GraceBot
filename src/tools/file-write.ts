@@ -9,12 +9,12 @@ interface FileWriteParams {
 
 export const fileWriteTool: ToolDefinition = {
   name: "file_write",
-  description: "将内容写入指定路径的文件。如果文件不存在会自动创建，包括必要的目录。",
+  description: "Write content to a file at the given path. Creates file and parent directories if they do not exist. Path is relative to user workspace.",
   parameters: {
     type: "object",
     properties: {
-      path: { type: "string", description: "文件路径（相对于用户 workspace）" },
-      content: { type: "string", description: "要写入的内容" },
+      path: { type: "string", description: "File path relative to user workspace" },
+      content: { type: "string", description: "Content to write" },
     },
     required: ["path", "content"],
   },

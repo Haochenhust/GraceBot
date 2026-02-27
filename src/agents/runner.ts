@@ -78,6 +78,8 @@ export class AgentRunner {
             {
               userId: context.userId,
               workspaceDir: getUserWorkspace(context.userId),
+              sessionId: context.sessionId,
+              messageId: context.message.messageId,
             },
           );
           toolCallRecords.push({ ...toolCall, result });
@@ -104,26 +106,29 @@ export class AgentRunner {
   private async handleError(
     error: unknown,
     messages: LLMMessage[],
-    _context: AgentContext,
+    context: AgentContext,
   ): Promise<LLMResponse> {
+    const tools =
+      context.tools.length > 0 ? this.toolRegistry.toLLMTools() : [];
+
     if (isContextOverflowError(error)) {
       log.warn("Context overflow, compacting...");
       const compacted = await this.compaction.compact(messages);
       messages.length = 0;
       messages.push(...compacted);
-      return this.modelRouter.call(messages);
+      return this.modelRouter.call(messages, { tools });
     }
 
     if (isRateLimitError(error)) {
       log.warn("Rate limit hit, switching API key...");
       this.modelRouter.markCurrentKeyFailed();
-      return this.modelRouter.call(messages);
+      return this.modelRouter.call(messages, { tools });
     }
 
     if (isModelUnavailableError(error)) {
       log.warn("Model unavailable, failing over...");
       this.modelRouter.failover();
-      return this.modelRouter.call(messages);
+      return this.modelRouter.call(messages, { tools });
     }
 
     throw error;

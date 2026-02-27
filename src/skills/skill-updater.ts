@@ -6,10 +6,10 @@ import type { SessionManager } from "../kernel/session-manager.js";
 
 const log = createLogger("skill-updater");
 
-const REFLECTION_PROMPT = `你是一个技能优化助手。分析最近的对话和当前的技能定义，判断是否需要改进。
-如果有改进建议，返回 JSON 格式:
-{ "suggestions": [{ "skillName": "xxx", "action": "update|create", "content": "新的技能内容" }] }
-如果没有改进建议，返回: { "suggestions": [] }`;
+const REFLECTION_PROMPT = `You are a skill optimization assistant. Analyze recent conversations and current skill definitions; decide if any improvement is needed.
+If you have suggestions, respond with JSON only:
+{ "suggestions": [{ "skillName": "xxx", "action": "update|create", "content": "new skill content in English" }] }
+If no suggestions, respond with: { "suggestions": [] }`;
 
 interface SkillSuggestion {
   skillName: string;

@@ -7,12 +7,12 @@ interface WebSearchParams {
 
 export const webSearchTool: ToolDefinition = {
   name: "web_search",
-  description: "搜索互联网获取实时信息。返回搜索结果摘要和链接。",
+  description: "Search the web for up-to-date information. Returns result snippets and links. Requires a search API to be configured.",
   parameters: {
     type: "object",
     properties: {
-      query: { type: "string", description: "搜索关键词" },
-      limit: { type: "number", description: "返回结果数量，默认 5", default: 5 },
+      query: { type: "string", description: "Search query" },
+      limit: { type: "number", description: "Max results to return, default 5", default: 5 },
     },
     required: ["query"],
   },

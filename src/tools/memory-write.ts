@@ -7,19 +7,19 @@ export function createMemoryWriteTool(
   return {
     name: "memory_write",
     description:
-      "记住一条重要信息。当对话中出现值得长期记忆的内容时使用。",
+      "Store an important fact for long-term memory. Use when the user explicitly asks to remember something or when the conversation reveals lasting preferences/facts.",
     parameters: {
       type: "object",
       properties: {
-        content: { type: "string", description: "要记住的内容" },
+        content: { type: "string", description: "Content to remember" },
         category: {
           type: "string",
           enum: ["preference", "fact", "event", "skill"],
-          description: "分类：preference(偏好), fact(事实), event(事件), skill(技能)",
+          description: "Category: preference, fact, event, or skill",
         },
         importance: {
           type: "number",
-          description: "重要性 1-10",
+          description: "Importance 1-10",
           minimum: 1,
           maximum: 10,
         },
@@ -39,7 +39,10 @@ export function createMemoryWriteTool(
         category,
         importance,
         createdAt: new Date().toISOString(),
-        source: { sessionId: "", messageId: "" },
+        source: {
+          sessionId: context.sessionId ?? "",
+          messageId: context.messageId ?? "",
+        },
       });
 
       return { content: `Memory saved: "${content}"` };

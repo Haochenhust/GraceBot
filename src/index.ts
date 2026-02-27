@@ -1,4 +1,5 @@
 import { loadConfig } from "./shared/config.js";
+import type { AgentResultHookContext } from "./shared/types.js";
 import { createLogger, getLogFilePath } from "./shared/logger.js";
 import { createGateway } from "./gateway/index.js";
 import { FeishuAPI } from "./gateway/feishu-api.js";
@@ -15,18 +16,19 @@ import { MemoryManager } from "./memory/memory-manager.js";
 import { MockEmbedding } from "./memory/embedding.js";
 import { SkillLoader } from "./skills/skill-loader.js";
 import { HookBus } from "./plugins/hook-bus.js";
-// import { PluginManager } from "./plugins/plugin-manager.js";
-// import { cronPlugin } from "./plugins/builtin/cron-plugin.js";
+import { PluginManager } from "./plugins/plugin-manager.js";
+import { cronPlugin } from "./plugins/builtin/cron-plugin.js";
+import { UserProfileUpdater } from "./memory/user-profile.js";
+import { SkillUpdater } from "./skills/skill-updater.js";
 
-// import { execTool } from "./tools/exec.js";
-// import { fileReadTool } from "./tools/file-read.js";
-// import { fileWriteTool } from "./tools/file-write.js";
-// import { fileEditTool } from "./tools/file-edit.js";
-// import { webSearchTool } from "./tools/web-search.js";
-// import { webFetchTool } from "./tools/web-fetch.js";
-// import { mcpCallTool } from "./tools/mcp-call.js";
-// import { createMemoryReadTool } from "./tools/memory-read.js";
-// import { createMemoryWriteTool } from "./tools/memory-write.js";
+import { execTool } from "./tools/exec.js";
+import { fileReadTool } from "./tools/file-read.js";
+import { fileWriteTool } from "./tools/file-write.js";
+import { fileEditTool } from "./tools/file-edit.js";
+import { webSearchTool } from "./tools/web-search.js";
+import { webFetchTool } from "./tools/web-fetch.js";
+import { createMemoryReadTool } from "./tools/memory-read.js";
+import { createMemoryWriteTool } from "./tools/memory-write.js";
 
 const log = createLogger("main");
 
@@ -43,17 +45,16 @@ async function main() {
   const memoryManager = new MemoryManager(embedding);
   const skillLoader = new SkillLoader();
 
-  // ── Tool Registry（今日仅测通回复链路，不注册任何工具）──
+  // ── Tool Registry ──
   const toolRegistry = new ToolRegistry();
-  // toolRegistry.register(execTool);
-  // toolRegistry.register(fileReadTool);
-  // toolRegistry.register(fileWriteTool);
-  // toolRegistry.register(fileEditTool);
-  // toolRegistry.register(webSearchTool);
-  // toolRegistry.register(webFetchTool);
-  // toolRegistry.register(mcpCallTool);
-  // toolRegistry.register(createMemoryReadTool(memoryManager));
-  // toolRegistry.register(createMemoryWriteTool(memoryManager));
+  toolRegistry.register(execTool);
+  toolRegistry.register(fileReadTool);
+  toolRegistry.register(fileWriteTool);
+  toolRegistry.register(fileEditTool);
+  toolRegistry.register(webSearchTool);
+  toolRegistry.register(webFetchTool);
+  toolRegistry.register(createMemoryReadTool(memoryManager));
+  toolRegistry.register(createMemoryWriteTool(memoryManager));
 
   // ── Agent ──
   const modelRouter = new ModelRouter({
@@ -93,15 +94,32 @@ async function main() {
   );
   tasking.setCentralController(centralController);
 
+  // ── After-agent: user profile & skill iteration ──
+  const userProfileUpdater = new UserProfileUpdater(
+    modelRouter,
+    config.models.reflection_model,
+  );
+  const skillUpdater = new SkillUpdater(
+    modelRouter,
+    skillLoader,
+    sessionManager,
+    config.models.reflection_model,
+  );
+  hookBus.on("after-agent", async (ctx) => {
+    const c = ctx as AgentResultHookContext;
+    await userProfileUpdater.updateIfNeeded(c.userId, c.message, c.result);
+    await skillUpdater.reflectAndUpdate(c.userId);
+  });
+
   // ── Gateway（飞书长连接 + HTTP 健康检查）──
   const app = createGateway(centralController, config.feishu);
 
   // ── 恢复持久化队列（重启后未处理完的消息继续处理）──
   await scheduling.loadPendingJobs();
 
-  // ── Plugins（今日不启用）──
-  // const pluginManager = new PluginManager(toolRegistry, hookBus, app);
-  // pluginManager.register(cronPlugin);
+  // ── Plugins ──
+  const pluginManager = new PluginManager(toolRegistry, hookBus, app);
+  pluginManager.register(cronPlugin);
 
   // ── Start server ──
   const port = config.server.port;

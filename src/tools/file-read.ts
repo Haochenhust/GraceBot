@@ -10,13 +10,13 @@ interface FileReadParams {
 
 export const fileReadTool: ToolDefinition = {
   name: "file_read",
-  description: "读取指定路径的文件内容。支持通过 offset 和 limit 读取部分内容。",
+  description: "Read file content at the given path (relative to user workspace). Supports offset and limit for partial read.",
   parameters: {
     type: "object",
     properties: {
-      path: { type: "string", description: "文件路径（相对于用户 workspace）" },
-      offset: { type: "number", description: "起始行号（从 0 开始）" },
-      limit: { type: "number", description: "读取行数" },
+      path: { type: "string", description: "File path relative to user workspace" },
+      offset: { type: "number", description: "Start line index (0-based)" },
+      limit: { type: "number", description: "Number of lines to read" },
     },
     required: ["path"],
   },

@@ -7,12 +7,12 @@ export function createMemoryReadTool(
   return {
     name: "memory_read",
     description:
-      "检索与查询相关的记忆。返回过往对话中记住的重要信息。",
+      "Retrieve memories relevant to a query. Returns important information stored from past conversations.",
     parameters: {
       type: "object",
       properties: {
-        query: { type: "string", description: "搜索关键词或问题" },
-        limit: { type: "number", description: "返回条数，默认 5", default: 5 },
+        query: { type: "string", description: "Search query or question" },
+        limit: { type: "number", description: "Max entries to return, default 5", default: 5 },
       },
       required: ["query"],
     },

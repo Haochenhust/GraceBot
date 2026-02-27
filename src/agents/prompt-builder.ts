@@ -2,37 +2,40 @@ import type { AgentContext } from "../shared/types.js";
 
 export class PromptBuilder {
   build(context: AgentContext): string {
-    // 今日仅测通回复链路：最简系统提示，无 Skills / 工具 / 人格 / 记忆
+    // All content sent to the model must be in English (see dev/LLM-content-language.md).
     const sections: string[] = [];
 
-    sections.push(`# 身份
-你是一个有帮助的 AI 助理。
-当前时间：${new Date().toISOString()}
-请直接、简洁地回复用户，不要调用任何工具。
+    sections.push(`# Identity
+You are GraceBot.
+Current time: ${new Date().toISOString()}
+${context.tools.length === 0 ? "Reply directly and concisely. Do not call any tools." : "Reply concisely. Use tools only when needed (e.g. run commands, read/write files, search, or remember facts)."}
 `);
 
-    // 以下功能今日不启用，仅保留注释便于日后恢复
-    // if (context.soul) {
-    //   sections.push(`# 人格设定\n${context.soul}`);
-    // }
-    // if (context.userProfile) {
-    //   sections.push(`# 关于当前用户\n${context.userProfile}`);
-    // }
-    // if (context.skills.length > 0) {
-    //   sections.push("# 技能");
-    //   for (const skill of context.skills) {
-    //     sections.push(`## ${skill.name}\n${skill.content}`);
-    //   }
-    // }
-    // if (context.memories.length > 0) {
-    //   sections.push("# 相关记忆（来自过往对话）");
-    //   for (const mem of context.memories) {
-    //     sections.push(`- [${mem.createdAt}] ${mem.content}`);
-    //   }
-    // }
-    // if (context.tools.length > 0) {
-    //   sections.push(`# 可用工具\n你有以下工具可以使用。只在确实需要时使用工具，简单问答直接回复即可。`);
-    // }
+    if (context.soul) {
+      sections.push(`# Persona (SOUL)\n${context.soul}`);
+    }
+    if (context.userProfile) {
+      sections.push(`# About the current user\n${context.userProfile}`);
+    }
+    if (context.skills.length > 0) {
+      sections.push("# Skills");
+      for (const skill of context.skills) {
+        sections.push(`## ${skill.name}\n${skill.content}`);
+      }
+    }
+    if (context.memories.length > 0) {
+      sections.push("# Relevant memories (from past conversations)");
+      for (const mem of context.memories) {
+        sections.push(`- [${mem.createdAt}] ${mem.content}`);
+      }
+    }
+    if (context.tools.length > 0) {
+      sections.push(
+        `# Available tools\nUse the following tools only when necessary; for simple Q&A, reply directly.`,
+      );
+    } else {
+      sections.push("# Available tools\nNone for now.");
+    }
 
     return sections.join("\n\n---\n\n");
   }

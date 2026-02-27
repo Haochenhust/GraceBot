@@ -66,7 +66,7 @@ export async function initUserSpace(userId: string): Promise<void> {
 
   await writeFile(
     `${baseDir}/USER.md`,
-    "# 用户画像\n\n（尚未建立，将在对话中自动积累）\n",
+    "# User profile\n\n(Not yet built; will be accumulated from conversations.)\n",
     "utf-8",
   );
 }

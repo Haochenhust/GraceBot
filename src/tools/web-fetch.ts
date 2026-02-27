@@ -7,14 +7,14 @@ interface WebFetchParams {
 
 export const webFetchTool: ToolDefinition = {
   name: "web_fetch",
-  description: "抓取指定 URL 的网页内容并返回文本。",
+  description: "Fetch a URL and return the page content as plain text. HTML is stripped. Respects max_length and timeout.",
   parameters: {
     type: "object",
     properties: {
-      url: { type: "string", description: "要抓取的 URL" },
+      url: { type: "string", description: "URL to fetch" },
       max_length: {
         type: "number",
-        description: "最大返回字符数，默认 8000",
+        description: "Max characters to return, default 8000",
         default: 8000,
       },
     },

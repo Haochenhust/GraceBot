@@ -57,6 +57,8 @@ export interface AgentContext {
   skills: Skill[];
   memories: MemoryEntry[];
   tools: ToolDefinition[];
+  /** Session ID for memory_write source tracing */
+  sessionId?: string;
 }
 
 export interface AgentResult {
@@ -111,6 +113,9 @@ export interface ToolDefinition {
 export interface ToolContext {
   userId: string;
   workspaceDir: string;
+  /** For memory_write source tracing */
+  sessionId?: string;
+  messageId?: string;
 }
 
 export interface ToolResult {

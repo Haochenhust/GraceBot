@@ -11,13 +11,13 @@ interface FileEditParams {
 export const fileEditTool: ToolDefinition = {
   name: "file_edit",
   description:
-    "精确替换文件中的指定文本。提供要替换的旧文本和新文本，old_string 必须在文件中唯一匹配。",
+    "Replace exact text in a file. Provide old_string and new_string; old_string must match exactly once in the file.",
   parameters: {
     type: "object",
     properties: {
-      path: { type: "string", description: "文件路径（相对于用户 workspace）" },
-      old_string: { type: "string", description: "要替换的原始文本" },
-      new_string: { type: "string", description: "替换后的新文本" },
+      path: { type: "string", description: "File path relative to user workspace" },
+      old_string: { type: "string", description: "Exact text to replace" },
+      new_string: { type: "string", description: "Replacement text" },
     },
     required: ["path", "old_string", "new_string"],
   },

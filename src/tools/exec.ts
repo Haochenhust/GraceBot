@@ -9,17 +9,17 @@ interface ExecParams {
 export const execTool: ToolDefinition = {
   name: "exec",
   description:
-    "在服务器上执行 Shell 命令。可以用来运行脚本、安装软件、查看系统状态等。",
+    "Execute a shell command on the server. Use for running scripts, listing files, checking system state, etc. Cwd defaults to user workspace.",
   parameters: {
     type: "object",
     properties: {
-      command: { type: "string", description: "要执行的 Shell 命令" },
+      command: { type: "string", description: "Shell command to run" },
       timeout: {
         type: "number",
-        description: "超时时间(秒)，默认 30",
+        description: "Timeout in seconds, default 30",
         default: 30,
       },
-      cwd: { type: "string", description: "工作目录，默认为用户 workspace" },
+      cwd: { type: "string", description: "Working directory, default user workspace" },
     },
     required: ["command"],
   },
