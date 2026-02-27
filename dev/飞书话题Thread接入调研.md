@@ -52,7 +52,7 @@
 | 点 | 说明 |
 |----|------|
 | **会话维度** | Session 按**话题**：`getOrCreate(userId, chatId, rootId)`。同一用户在同一话题内的多轮对话共享一个 Session；直接跟机器人发新消息会生成新话题（rootId = 该条消息的 message_id），在新话题里继续聊。 |
-| **过期** | 同一话题 **3 小时**无新消息后视为过期，下次在该话题再发会按「新会话」处理（可复用同一 session 文件但历史仍保留）；或理解为 3 小时内同一话题上下文延续。 |
+| **过期** | 话题内**无超时**：同一话题的会话不会因时间自动断开，只有用户删除该话题或新开一条消息（不回复原话题）时才会切换会话。 |
 | **回复形态** | 使用 `replyMessage(messageId, text, { chatId })`，回复落在用户消息的回复链（话题）里。若用户删除了该话题，飞书返回 230019，则自动降级为向会话发一条新消息。 |
 | **话题被删** | 用户删除话题后，机器人无法再往该话题回复；FeishuAPI 在 230019 时若传入 `chatId` 会 fallback 到 `sendMessage(chatId, text)`，保证用户仍能收到回复。 |
 
@@ -65,7 +65,7 @@
 2. **Normalizer**（`src/gateway/normalizer.ts`）  
    - 从事件中解析 `root_id`、`parent_id` 写入 `UnifiedMessage`。
 3. **SessionManager**  
-   - `getOrCreate(userId, chatId, rootId)`，session id 由 `hash(chatId + rootId)` 确定；超时 3 小时（可配置 `session_timeout_minutes`）。
+   - `getOrCreate(userId, chatId, rootId)`，session id 由 `hash(chatId + rootId)` 确定；话题内无超时。
 4. **CentralController**  
    - `rootId = message.rootId ?? message.messageId`，再 `getOrCreate(userId, chatId, rootId)`。
 5. **FeishuAPI**  

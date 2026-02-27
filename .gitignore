@@ -29,6 +29,7 @@ dist/
 
 # Runtime data (user-specific data)
 data/users/*/
+data/queue/
 
 # Keep the data directory structure
 !data/users/.gitkeep

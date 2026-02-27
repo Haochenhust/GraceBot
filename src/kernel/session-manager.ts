@@ -19,14 +19,9 @@ function toSessionId(chatId: string, rootId: string): string {
 }
 
 export class SessionManager {
-  private sessionTimeoutMs: number;
-
-  constructor(sessionTimeoutMinutes = 180) {
-    this.sessionTimeoutMs = sessionTimeoutMinutes * 60 * 1000;
-  }
-
   /**
    * 按话题维度获取或创建会话：同一 (userId, chatId, rootId) 共享一个 Session。
+   * 话题内无超时，只有用户删除话题或新开话题才会切换会话。
    * rootId 为话题根消息 ID：若用户在某条消息下回复则来自 message.rootId，否则为新话题，取 message.messageId。
    */
   async getOrCreate(
@@ -36,13 +31,8 @@ export class SessionManager {
   ): Promise<Session> {
     await initUserSpace(userId);
 
-    const id = toSessionId(chatId, rootId);
     const existing = await this.getSessionByThread(userId, chatId, rootId);
-
-    if (
-      existing &&
-      Date.now() - existing.lastActiveAt < this.sessionTimeoutMs
-    ) {
+    if (existing) {
       existing.lastActiveAt = Date.now();
       await this.save(userId, existing);
       return existing;

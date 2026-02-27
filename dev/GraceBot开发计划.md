@@ -77,8 +77,8 @@ flowchart LR
 | 子项 | 内容 |
 |------|------|
 | User-Space | 首次收到用户消息时初始化 `data/users/{userId}/` 及 sessions 目录 |
-| SessionManager | `getOrCreate(userId)`（含 30 分钟超时）、`getHistory`、`appendHistory`，会话持久化到 JSON |
-| Scheduling | Bunqueue 入队、并发与去重（如按 messageId）、出队交给 Tasking |
+| SessionManager | 按话题：`getOrCreate(userId, chatId, rootId)`，**话题内无超时**（只有用户删除话题或新开话题才切换会话）；`getHistory`、`appendHistory`，会话持久化到 JSON |
+| Scheduling | **持久化队列**：pending + in_progress 落盘（`data/queue/`），重启后恢复未处理消息；并发与去重（按 messageId）、出队交给 Tasking |
 | Tasking 骨架 | 加载会话历史 → 组装最简 `AgentContext`（仅 history + 当前 message）→ 调 AgentRunner → 保存历史 → FeishuAPI 回复 |
 | CentralController | `dispatch` 内：群聊 @ 过滤、getOrCreate 会话、enqueue(task)；提供 `sendReply` 给 Tasking |
 | AgentRunner 最简版 | 无 tools、无 skills，仅固定 system prompt（如「你是 GraceBot」）+ history + 当前用户消息，单次 LLM 调用，返回纯文本 |
@@ -91,8 +91,8 @@ flowchart LR
 ### 3.4 涉及文件/目录
 
 ```
-src/kernel/session-manager.ts   # 会话管理
-src/kernel/scheduling.ts       # Bunqueue 队列
+src/kernel/session-manager.ts   # 会话管理（按话题、无超时）
+src/kernel/scheduling.ts       # 持久化队列（pending + in_progress，重启恢复）
 src/kernel/tasking.ts          # 任务执行（仅历史 + 调 Agent + 存历史 + 回复）
 src/kernel/central-controller.ts
 src/agents/runner.ts           # 最简版（无 tool_use）
@@ -100,6 +100,7 @@ src/agents/model-router.ts     # 最简版（单模型）
 src/shared/types.ts            # UnifiedMessage, Session, AgentContext, AgentResult, AgentTask 等
 src/shared/utils.ts            # initUserSpace、getUserWorkspace 等
 data/users/{userId}/sessions/  # 会话 JSON 存储
+data/queue/                    # 队列持久化（pending.json、in_progress.json）
 ```
 
 ### 3.5 阶段性验收（飞书实测）
@@ -107,8 +108,9 @@ data/users/{userId}/sessions/  # 会话 JSON 存储
 - [ ] 飞书私聊发多条消息，Bot 回复正常，且能引用上文（多轮上下文连贯）。
 - [ ] 检查 `data/users/{userId}/sessions/*.json`，历史记录正确写入。
 - [ ] 重启服务后，再发消息，Bot 仍能延续上一轮对话。
-- [ ] 同一用户 30 分钟无消息后再发，视为新会话（新 session 文件或新 sessionId）。
+- [ ] 按话题会话：同一话题内无超时；用户新开一条消息（不回复原话题）时视为新话题、新会话。
 - [ ] 连续快速发两条消息，两条均被处理且顺序合理（队列生效）。
+- [ ] 有消息在队列中时重启服务，重启后该消息仍被处理（持久化队列生效）。
 
 ---
 

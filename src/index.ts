@@ -38,7 +38,7 @@ async function main() {
   // ── Core services ──
   const hookBus = new HookBus();
   const feishuAPI = new FeishuAPI(config.feishu);
-  const sessionManager = new SessionManager(config.agent.session_timeout_minutes);
+  const sessionManager = new SessionManager();
   const embedding = new MockEmbedding();
   const memoryManager = new MemoryManager(embedding);
   const skillLoader = new SkillLoader();
@@ -95,6 +95,9 @@ async function main() {
 
   // ── Gateway（飞书长连接 + HTTP 健康检查）──
   const app = createGateway(centralController, config.feishu);
+
+  // ── 恢复持久化队列（重启后未处理完的消息继续处理）──
+  await scheduling.loadPendingJobs();
 
   // ── Plugins（今日不启用）──
   // const pluginManager = new PluginManager(toolRegistry, hookBus, app);
