@@ -61,6 +61,7 @@ export class FeishuAPI {
         body: JSON.stringify({
           content: JSON.stringify({ text }),
           msg_type: "text",
+          reply_in_thread: "true", // 以话题形式回复，见 https://open.feishu.cn/document/im-v1/message/thread-introduction
         }),
       },
     );
