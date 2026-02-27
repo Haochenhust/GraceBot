@@ -68,7 +68,11 @@ export class AgentRunner {
       }
 
       if (response.stopReason === "tool_use") {
-        messages.push({ role: "assistant", content: response.content });
+        messages.push({
+          role: "assistant",
+          content: response.content,
+          ...(response.reasoningContent != null && response.reasoningContent !== "" && { reasoning_content: response.reasoningContent }),
+        });
 
         const toolResults: ToolResultBlock[] = [];
         for (const toolCall of response.toolCalls) {

@@ -80,6 +80,8 @@ export interface AgentTask {
 export interface LLMMessage {
   role: "system" | "user" | "assistant";
   content: string | ContentBlock[];
+  /** Kimi thinking model: required on assistant messages with tool_calls when replaying history */
+  reasoning_content?: string;
 }
 
 export type ContentBlock =
@@ -93,6 +95,8 @@ export interface LLMResponse {
   stopReason: "end_turn" | "tool_use" | "max_tokens";
   toolCalls: ToolCall[];
   usage: { input: number; output: number };
+  /** Kimi thinking model: reasoning/thinking text before tool_calls; must be re-sent in next request */
+  reasoningContent?: string;
 }
 
 export interface LLMToolSchema {

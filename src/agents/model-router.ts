@@ -151,13 +151,25 @@ export class ModelRouter {
     const baseUrl = (profile.endpoint ?? PROVIDER_DEFAULTS[profile.provider] ?? PROVIDER_DEFAULTS.openai).replace(/\/$/, "");
     const url = `${baseUrl}/chat/completions`;
 
+    let outMessages: Array<Record<string, unknown>> = toOpenAIMessages(messages);
+
+    // Kimi K2.5: temperature=1 only; thinking model requires reasoning_content on every assistant message that has tool_calls (non-empty)
+    if (profile.provider === "kimi") {
+      outMessages = outMessages.map((msg) => {
+        if (msg.role === "assistant" && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+          const hasReasoning = msg.reasoning_content !== undefined && msg.reasoning_content !== null && String(msg.reasoning_content).trim() !== "";
+          return { ...msg, reasoning_content: hasReasoning ? msg.reasoning_content : " " };
+        }
+        return msg;
+      });
+    }
+
     const body: Record<string, unknown> = {
       model,
-      messages: toOpenAIMessages(messages),
+      messages: outMessages,
       max_tokens: 8192,
     };
 
-    // Kimi K2.5 only supports temperature=1; others use default
     if (profile.provider === "kimi") {
       body.temperature = 1;
     }
@@ -191,6 +203,7 @@ export class ModelRouter {
             type: string;
             function: { name: string; arguments: string };
           }>;
+          reasoning_content?: string | null;
         };
         finish_reason?: string;
       }>;
@@ -232,6 +245,7 @@ export class ModelRouter {
     }));
 
     const text = typeof msg.content === "string" ? msg.content : "";
+    const reasoningContent = typeof msg.reasoning_content === "string" ? msg.reasoning_content : undefined;
     const finishReason = choice?.finish_reason ?? "stop";
     const stopReason: LLMResponse["stopReason"] =
       finishReason === "tool_calls" ? "tool_use"
@@ -240,7 +254,7 @@ export class ModelRouter {
 
     log.info({ model, provider: profile.provider, stopReason, textLen: text.length, toolCallsCount: toolCalls.length, inputTokens, outputTokens }, "LLM response");
 
-    return { text, content, stopReason, toolCalls, usage: { input: inputTokens, output: outputTokens } };
+    return { text, content, stopReason, toolCalls, usage: { input: inputTokens, output: outputTokens }, reasoningContent };
   }
 
   // ─── Anthropic ────────────────────────────────────────────────────────────
@@ -355,7 +369,7 @@ function toOpenAIMessages(messages: LLMMessage[]): Array<Record<string, unknown>
       };
     }
     if (m.role === "assistant" && toolUses.length > 0) {
-      return {
+      const out: Record<string, unknown> = {
         role: "assistant",
         content: textBlock?.text ?? null,
         tool_calls: toolUses.map((u) => ({
@@ -364,6 +378,10 @@ function toOpenAIMessages(messages: LLMMessage[]): Array<Record<string, unknown>
           function: { name: u.name, arguments: JSON.stringify(u.input) },
         })),
       };
+      if (m.reasoning_content !== undefined && m.reasoning_content !== null) {
+        out.reasoning_content = m.reasoning_content;
+      }
+      return out;
     }
     const text = textBlock?.text ?? (blocks as { text?: string }[]).find((b) => b.text)?.text ?? "";
     return { role: m.role, content: text || null };

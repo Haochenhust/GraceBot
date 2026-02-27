@@ -36,34 +36,45 @@ export class Tasking {
 
     log.info({ userId, sessionId: session.id }, "Executing task");
 
-    const history = await this.sessionManager.getHistory(userId, session.id);
-
-    const soul =
-      (await readTextFile(`data/users/${userId}/SOUL.md`)) ??
-      (await readTextFile("data/shared/defaults/SOUL.md"));
-    const userProfile = await readTextFile(`data/users/${userId}/USER.md`);
-    const skills = await this.skillLoader.loadAll(userId);
-    const memories = await this.memoryManager.search(userId, message.text, 5);
-
-    const context: AgentContext = {
-      userId,
-      message,
-      history,
-      soul,
-      userProfile,
-      skills,
-      memories,
-      tools: this.toolRegistry.getAvailableTools(),
-      sessionId: session.id,
-    };
-
-    await this.hookBus.emit("before-agent", { userId, context });
-
     let result: AgentResult;
     try {
+      const history = await this.sessionManager.getHistory(userId, session.id);
+
+      const soul =
+        (await readTextFile(`data/users/${userId}/SOUL.md`)) ??
+        (await readTextFile("data/shared/defaults/SOUL.md"));
+      const userProfile = await readTextFile(`data/users/${userId}/USER.md`);
+      const skills = await this.skillLoader.loadAll(userId);
+      const memories = await this.memoryManager.search(userId, message.text, 5);
+
+      const context: AgentContext = {
+        userId,
+        message,
+        history,
+        soul,
+        userProfile,
+        skills,
+        memories,
+        tools: this.toolRegistry.getAvailableTools(),
+        sessionId: session.id,
+      };
+
+      await this.hookBus.emit("before-agent", { userId, context });
+
       result = await this.agentRunner.run(context);
     } catch (err) {
-      log.error({ err, userId }, "Agent execution failed");
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorStack = err instanceof Error ? err.stack : undefined;
+      log.error(
+        {
+          err,
+          userId,
+          messageId: message.messageId,
+          errorMessage,
+          errorStack,
+        },
+        "Agent execution failed",
+      );
       await this.hookBus.emit("on-error", { error: err, userId });
       result = {
         text: "[GraceBot] 处理消息时发生错误，请稍后再试。",
