@@ -1,4 +1,3 @@
-import { createHash } from "crypto";
 import { createLogger } from "../shared/logger.js";
 import { readJSON, writeJSON, initUserSpace } from "../shared/utils.js";
 import type {
@@ -10,12 +9,26 @@ import type {
 
 const log = createLogger("session-manager");
 
-/** 由 chatId + rootId 生成唯一且稳定的 session 文件 id */
-function toSessionId(chatId: string, rootId: string): string {
-  return createHash("sha256")
-    .update(chatId + "\0" + rootId)
-    .digest("hex")
-    .slice(0, 24);
+/** 格式化为「年月日时分秒」用于会话文件名，便于像 log 一样一眼看出时间 */
+function formatSessionId(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const M = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const H = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const s = String(d.getSeconds()).padStart(2, "0");
+  return `${y}${M}${day}${H}${m}${s}`;
+}
+
+/** 在已有 sessions 中生成唯一的 session id（同秒内多会话则追加 _1, _2） */
+function uniqueSessionId(createdAt: number, existingSessions: Session[]): string {
+  const base = formatSessionId(createdAt);
+  const used = new Set(existingSessions.map((s) => s.id));
+  if (!used.has(base)) return base;
+  let n = 1;
+  while (used.has(`${base}_${n}`)) n++;
+  return `${base}_${n}`;
 }
 
 export class SessionManager {
@@ -75,10 +88,11 @@ export class SessionManager {
     chatId: string,
     rootId: string,
   ): Promise<Session | null> {
-    const id = toSessionId(chatId, rootId);
     const indexPath = `data/users/${userId}/sessions/_index.json`;
     const sessions = (await readJSON<Session[]>(indexPath)) ?? [];
-    return sessions.find((s) => s.id === id) ?? null;
+    return (
+      sessions.find((s) => s.chatId === chatId && s.rootId === rootId) ?? null
+    );
   }
 
   private async createNew(
@@ -86,24 +100,21 @@ export class SessionManager {
     chatId: string,
     rootId: string,
   ): Promise<Session> {
-    const id = toSessionId(chatId, rootId);
+    const createdAt = Date.now();
+    const indexPath = `data/users/${userId}/sessions/_index.json`;
+    const sessions = (await readJSON<Session[]>(indexPath)) ?? [];
+    const id = uniqueSessionId(createdAt, sessions);
+
     const session: Session = {
       id,
       userId,
       chatId,
       rootId,
-      createdAt: Date.now(),
-      lastActiveAt: Date.now(),
+      createdAt,
+      lastActiveAt: createdAt,
     };
 
-    const indexPath = `data/users/${userId}/sessions/_index.json`;
-    const sessions = (await readJSON<Session[]>(indexPath)) ?? [];
-    const idx = sessions.findIndex((s) => s.id === id);
-    if (idx >= 0) {
-      sessions[idx] = session;
-    } else {
-      sessions.push(session);
-    }
+    sessions.push(session);
     await writeJSON(indexPath, sessions);
 
     log.info(
