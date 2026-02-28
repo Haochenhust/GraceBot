@@ -29,6 +29,7 @@ import { createWebSearchTool } from "./tools/web-search.js";
 import { webFetchTool } from "./tools/web-fetch.js";
 import { createMemoryReadTool } from "./tools/memory-read.js";
 import { createMemoryWriteTool } from "./tools/memory-write.js";
+import { createKimiBalanceTool } from "./tools/kimi-balance.js";
 
 const log = createLogger("main");
 
@@ -55,6 +56,13 @@ async function main() {
   toolRegistry.register(webFetchTool);
   toolRegistry.register(createMemoryReadTool(memoryManager));
   toolRegistry.register(createMemoryWriteTool(memoryManager));
+  const kimiProfile = config.models.profiles.find((p) => p.provider === "kimi");
+  toolRegistry.register(
+    createKimiBalanceTool({
+      apiKey: kimiProfile?.apiKey,
+      endpoint: kimiProfile?.endpoint,
+    }),
+  );
 
   // ── Agent ──
   const modelRouter = new ModelRouter({
