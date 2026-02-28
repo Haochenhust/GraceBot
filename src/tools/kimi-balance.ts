@@ -7,7 +7,9 @@ import type { ToolDefinition } from "../shared/types.js";
 
 const log = createLogger("kimi-balance");
 
-const BALANCE_URL = "https://api.moonshot.cn/v1/balance";
+/** 官方文档: https://platform.moonshot.cn/docs/api/balance */
+const BALANCE_PATH = "/v1/users/me/balance";
+const DEFAULT_BALANCE_URL = "https://api.moonshot.cn" + BALANCE_PATH;
 
 export interface KimiBalanceConfig {
   apiKey?: string;
@@ -31,7 +33,8 @@ export function createKimiBalanceTool(config: KimiBalanceConfig): ToolDefinition
     },
     async execute(_params, _context) {
       const apiKey = config.apiKey;
-      const url = config.endpoint ? `${config.endpoint.replace(/\/$/, "")}/balance` : BALANCE_URL;
+      const base = config.endpoint?.replace(/\/$/, "") ?? "https://api.moonshot.cn";
+      const url = base.replace(/\/v1\/?$/, "") + BALANCE_PATH;
 
       if (!apiKey) {
         return {
@@ -67,19 +70,29 @@ export function createKimiBalanceTool(config: KimiBalanceConfig): ToolDefinition
           return { content: `Balance request failed: ${errMsg}`, isError: true };
         }
 
-        // 常见响应格式: { data: { balance: number } } 或 { balance: number }
+        // 官方格式: { code: 0, data: { available_balance, voucher_balance, cash_balance }, status: true }
         const obj = data as Record<string, unknown>;
         const dataBlock = obj?.data as Record<string, unknown> | undefined;
-        const balance = (dataBlock?.balance ?? obj?.balance) as number | string | undefined;
-        const currency = (dataBlock?.currency ?? obj?.currency) as string | undefined;
+        const available = dataBlock?.available_balance as number | undefined;
+        const voucher = dataBlock?.voucher_balance as number | undefined;
+        const cash = dataBlock?.cash_balance as number | undefined;
 
-        if (balance !== undefined && balance !== null) {
-          const amount = typeof balance === "number" ? balance : Number(balance);
-          const cur = currency ?? "CNY";
-          log.info({ balance: amount, currency: cur }, "Kimi balance fetched");
-          return {
-            content: `Kimi API 账户余额：**${amount} ${cur}**`,
-          };
+        if (
+          typeof available === "number" ||
+          typeof voucher === "number" ||
+          typeof cash === "number"
+        ) {
+          log.info(
+            { available_balance: available, voucher_balance: voucher, cash_balance: cash },
+            "Kimi balance fetched",
+          );
+          const lines = [
+            `**可用余额**：${available ?? 0} 元（现金 ${cash ?? 0} 元 + 代金券 ${voucher ?? 0} 元）`,
+          ];
+          if (typeof available === "number" && available <= 0) {
+            lines.push("可用余额 ≤ 0 时无法调用推理 API，请充值或使用代金券。");
+          }
+          return { content: lines.join("\n\n") };
         }
 
         return {
