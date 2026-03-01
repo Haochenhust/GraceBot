@@ -31,6 +31,9 @@ dist/
 data/users/*/
 data/queue/
 
+# Dev notes and drafts (local only)
+dev/
+
 # Keep the data directory structure
 !data/users/.gitkeep
 !data/shared/
