@@ -1,6 +1,7 @@
 import { mkdir } from "fs/promises";
 import { dirname } from "path";
 import { createLogger } from "../shared/logger.js";
+import { startSpan } from "../shared/tracer.js";
 import { readJSON, writeJSON } from "../shared/utils.js";
 import type { AgentTask } from "../shared/types.js";
 import type { Tasking } from "./tasking.js";
@@ -66,14 +67,20 @@ export class Scheduling {
     const deduplicationKey = task.message.messageId;
 
     if (this.queue.some((job) => job.id === deduplicationKey)) {
-      log.debug({ messageId: deduplicationKey }, "Duplicate task, skipping");
+      log.info(
+        { phase: "kernel.queue", messageId: deduplicationKey },
+        "[flow] 重复消息，跳过入队",
+      );
       return;
     }
 
     const job: QueueJob = { data: task, id: deduplicationKey };
     this.queue.push(job);
     await this.appendPending(job);
-    log.info({ messageId: deduplicationKey }, "Task enqueued");
+    log.info(
+      { phase: "kernel.queue", messageId: deduplicationKey, userId: task.userId },
+      "[flow] 任务入队，等待执行",
+    );
 
     this.processNext();
   }
@@ -110,12 +117,42 @@ export class Scheduling {
     await this.addToInProgress(job);
 
     this.processing++;
+    const span = startSpan(job.id, "队列执行任务", "kernel.queue.start", {
+      userId: job.data.userId,
+    });
+    log.info(
+      {
+        phase: "kernel.queue.start",
+        messageId: job.id,
+        userId: job.data.userId,
+      },
+      "[flow] 开始执行任务",
+    );
 
+    let taskErr: Error | undefined;
     try {
       await this.executeWithRetry(job.data, this.retries);
+      log.info(
+        { phase: "kernel.queue.done", messageId: job.id },
+        "[flow] 任务执行完成",
+      );
     } catch (err) {
-      log.error({ err, jobId: job.id }, "Task failed after retries");
+      taskErr = err instanceof Error ? err : new Error(String(err));
+      const errMsg = taskErr.message;
+      const errStack = taskErr.stack;
+      log.error(
+        {
+          phase: "kernel.queue.failed",
+          messageId: job.id,
+          userId: job.data.userId,
+          error: errMsg,
+          stack: errStack,
+          err,
+        },
+        "[flow] 任务重试耗尽后失败",
+      );
     } finally {
+      span.end(taskErr);
       this.processing--;
       await this.removeFromInProgress(job.id);
       this.processNext();
@@ -129,8 +166,20 @@ export class Scheduling {
     try {
       await this.tasking.execute(task);
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const errStack = err instanceof Error ? err.stack : undefined;
       if (retriesLeft > 0) {
-        log.warn({ err, retriesLeft }, "Task failed, retrying...");
+        log.warn(
+          {
+            phase: "kernel.queue",
+            messageId: task.message.messageId,
+            retriesLeft,
+            error: errMsg,
+            stack: errStack,
+            err,
+          },
+          "[flow] 任务执行失败，即将重试",
+        );
         await this.executeWithRetry(task, retriesLeft - 1);
       } else {
         throw err;

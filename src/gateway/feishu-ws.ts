@@ -1,6 +1,7 @@
 import * as Lark from "@larksuiteoapi/node-sdk";
 import { normalizeFeishuEvent } from "./normalizer.js";
 import { createLogger } from "../shared/logger.js";
+import { startSpan } from "../shared/tracer.js";
 import type { CentralController } from "../kernel/central-controller.js";
 import type { AppConfig } from "../shared/types.js";
 
@@ -30,16 +31,39 @@ export function startFeishuLongConnection(
           message.text.length > 80 ? `${message.text.slice(0, 80)}…` : message.text;
         log.info(
           {
-            userId: message.userId,
+            phase: "gateway",
             messageId: message.messageId,
+            userId: message.userId,
             chatType: message.chatType,
             textPreview: textPreview || "(empty)",
           },
-          "Feishu message received, dispatching",
+          "[flow] 收到飞书消息，进入 dispatch",
         );
-        controller.dispatch(message).catch((err) => {
-          log.error({ err, messageId: message.messageId }, "Failed to dispatch message");
-        });
+        const span = startSpan(
+          message.messageId,
+          "收到飞书消息",
+          "gateway",
+          { userId: message.userId, chatType: message.chatType, textLen: message.text.length },
+        );
+        controller.dispatch(message).then(
+          () => span.end(),
+          (err) => {
+            span.end(err instanceof Error ? err : new Error(String(err)));
+            const errMsg = err instanceof Error ? err.message : String(err);
+            const errStack = err instanceof Error ? err.stack : undefined;
+            log.error(
+              {
+                phase: "gateway",
+                messageId: message.messageId,
+                userId: message.userId,
+                error: errMsg,
+                stack: errStack,
+                err,
+              },
+              "[flow] dispatch 失败",
+            );
+          },
+        );
       }
     },
   });

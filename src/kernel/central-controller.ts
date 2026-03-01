@@ -1,4 +1,5 @@
 import { createLogger } from "../shared/logger.js";
+import { startSpan } from "../shared/tracer.js";
 import type { UnifiedMessage } from "../shared/types.js";
 import type { SessionManager } from "./session-manager.js";
 import type { Scheduling } from "./scheduling.js";
@@ -16,37 +17,68 @@ export class CentralController {
   ) {}
 
   async dispatch(message: UnifiedMessage): Promise<void> {
-    log.info(
+    const span = startSpan(
+      message.messageId,
+      "central-controller dispatch",
+      "kernel.dispatch",
       { userId: message.userId, chatType: message.chatType },
-      "Dispatching message",
     );
+    try {
+      log.info(
+        {
+          phase: "kernel.dispatch",
+          messageId: message.messageId,
+          userId: message.userId,
+          chatType: message.chatType,
+        },
+        "[flow] 进入 central-controller dispatch",
+      );
 
-    const processed = await this.hookBus.emit("on-message", { message });
-    if (processed?.intercepted) return;
+      const processed = await this.hookBus.emit("on-message", { message });
+      if (processed?.intercepted) {
+        log.info(
+          { phase: "kernel.dispatch", messageId: message.messageId },
+          "[flow] 被 on-message 插件拦截，不再入队",
+        );
+        return;
+      }
 
-    // 群聊中只响应 @机器人 的消息
-    if (
-      message.chatType === "group" &&
-      !message.mentions?.some((m) => m.isBot)
-    ) {
-      log.debug("Group message without bot mention, skipping");
-      return;
+      if (
+        message.chatType === "group" &&
+        !message.mentions?.some((m) => m.isBot)
+      ) {
+        log.info(
+          { phase: "kernel.dispatch", messageId: message.messageId },
+          "[flow] 群消息未 @ 机器人，跳过",
+        );
+        return;
+      }
+
+      const rootId = message.rootId ?? message.messageId;
+      const session = await this.sessionManager.getOrCreate(
+        message.userId,
+        message.chatId,
+        rootId,
+      );
+      log.info(
+        {
+          phase: "kernel.dispatch",
+          messageId: message.messageId,
+          sessionId: session.id,
+          rootId,
+        },
+        "[flow] 会话就绪，入队 agent-task",
+      );
+
+      await this.scheduling.enqueue({
+        type: "agent-task",
+        userId: message.userId,
+        message,
+        session,
+      });
+    } finally {
+      span.end();
     }
-
-    // 按话题分会话：同一话题内多轮共享 Session；新消息（无 rootId）则用当前 messageId 作为话题根
-    const rootId = message.rootId ?? message.messageId;
-    const session = await this.sessionManager.getOrCreate(
-      message.userId,
-      message.chatId,
-      rootId,
-    );
-
-    await this.scheduling.enqueue({
-      type: "agent-task",
-      userId: message.userId,
-      message,
-      session,
-    });
   }
 
   async sendReply(
@@ -55,10 +87,39 @@ export class CentralController {
     messageId: string,
     text: string,
   ): Promise<void> {
+    const span = startSpan(messageId, "回复飞书", "reply", {
+      userId,
+      replyLen: text.length,
+    });
     log.info(
-      { userId, messageId, replyLen: text.length },
-      "Sending reply to Feishu",
+      {
+        phase: "reply",
+        messageId,
+        userId,
+        replyLen: text.length,
+        replyPreview: text.length > 120 ? `${text.slice(0, 120)}…` : text,
+      },
+      "[flow] 回复用户（飞书）",
     );
-    await this.feishuAPI.replyMessage(messageId, text, { chatId });
+    try {
+      await this.feishuAPI.replyMessage(messageId, text, { chatId });
+    } catch (err) {
+      span.end(err instanceof Error ? err : new Error(String(err)));
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const errStack = err instanceof Error ? err.stack : undefined;
+      log.error(
+        {
+          phase: "reply",
+          messageId,
+          userId,
+          error: errMsg,
+          stack: errStack,
+          err,
+        },
+        "[flow] 回复飞书失败",
+      );
+      throw err;
+    }
+    span.end();
   }
 }

@@ -3,25 +3,45 @@ import { join } from "path";
 import pino from "pino";
 
 const LOG_DIR = "logs";
-const LOG_FILE = "gracebot.log";
+const RUN_LOG_FILE = "run.log";
 
-function ensureLogDir(): string {
-  const dir = join(process.cwd(), LOG_DIR);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+/** 单次运行的日志目录名：年月日时分秒 */
+function getRunDirName(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  const h = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  const s = String(now.getSeconds()).padStart(2, "0");
+  return `${y}${m}${d}-${h}${min}${s}`;
+}
+
+const RUN_DIR_NAME = getRunDirName();
+
+function ensureRunDir(): string {
+  const base = join(process.cwd(), LOG_DIR);
+  if (!existsSync(base)) {
+    mkdirSync(base, { recursive: true });
   }
-  return dir;
+  const runDir = join(base, RUN_DIR_NAME);
+  if (!existsSync(runDir)) {
+    mkdirSync(runDir, { recursive: true });
+  }
+  return runDir;
 }
 
-function createFileStream(): pino.DestinationStream {
-  const dir = ensureLogDir();
-  const filePath = join(dir, LOG_FILE);
-  return pino.destination(filePath);
-}
+const runDir = ensureRunDir();
+const fileStream = pino.destination({
+  dest: join(runDir, RUN_LOG_FILE),
+  append: true,
+  mkdir: false,
+});
 
-// 控制台 + 本地文件双写：控制台在 dev 下用 pino-pretty，生产为 JSON；文件始终为 JSON 便于排查
-const fileStream = createFileStream();
-const streams: pino.StreamEntry[] = [{ stream: process.stdout }, { stream: fileStream }];
+const streams: pino.StreamEntry[] = [
+  { stream: process.stdout },
+  { stream: fileStream, level: "debug" },
+];
 const multi = pino.multistream(streams);
 
 export const logger = pino(
@@ -37,7 +57,12 @@ export function createLogger(module: string) {
   return logger.child({ module });
 }
 
-/** 当前日志文件路径（便于排查时打开） */
+/** 当前本次运行的日志目录（便于排查时打开） */
+export function getRunLogDir(): string {
+  return runDir;
+}
+
+/** 当前本次运行的全流程日志文件路径 */
 export function getLogFilePath(): string {
-  return join(process.cwd(), LOG_DIR, LOG_FILE);
+  return join(runDir, RUN_LOG_FILE);
 }

@@ -132,8 +132,8 @@ async function main() {
   // ── Start server ──
   const port = config.server.port;
   log.info(
-    { port, logFile: getLogFilePath() },
-    "GraceBot is ready (logs also written to file)",
+    { port, logFile: getLogFilePath(), traceUrl: `http://localhost:${port}/trace` },
+    "GraceBot is ready (全流程日志 run.log，Trace 可视化 /trace)",
   );
 
   Bun.serve({

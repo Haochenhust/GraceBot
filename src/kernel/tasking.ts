@@ -1,4 +1,5 @@
 import { createLogger } from "../shared/logger.js";
+import { startSpan } from "../shared/tracer.js";
 import { readTextFile } from "../shared/utils.js";
 import type {
   AgentTask,
@@ -33,10 +34,24 @@ export class Tasking {
 
   async execute(task: AgentTask): Promise<void> {
     const { userId, message, session } = task;
+    const messageId = message.messageId;
+    const span = startSpan(messageId, "tasking 执行", "kernel.tasking", {
+      userId,
+      sessionId: session.id,
+    });
 
-    log.info({ userId, sessionId: session.id }, "Executing task");
+    log.info(
+      {
+        phase: "kernel.tasking",
+        messageId,
+        userId,
+        sessionId: session.id,
+      },
+      "[flow] 开始执行 task：拉取 history / soul / skills / memories / tools",
+    );
 
     let result: AgentResult;
+    let taskErr: Error | undefined;
     try {
       const history = await this.sessionManager.getHistory(userId, session.id);
 
@@ -46,6 +61,7 @@ export class Tasking {
       const userProfile = await readTextFile(`data/users/${userId}/USER.md`);
       const skills = await this.skillLoader.loadAll(userId);
       const memories = await this.memoryManager.search(userId, message.text, 5);
+      const tools = this.toolRegistry.getAvailableTools();
 
       const context: AgentContext = {
         userId,
@@ -55,25 +71,40 @@ export class Tasking {
         userProfile,
         skills,
         memories,
-        tools: this.toolRegistry.getAvailableTools(),
+        tools,
         sessionId: session.id,
       };
+
+      log.info(
+        {
+          phase: "kernel.tasking",
+          messageId,
+          historyLen: history.length,
+          skillNames: skills.map((s) => s.name),
+          toolNames: tools.map((t) => t.name),
+          memoriesCount: memories.length,
+        },
+        "[flow] context 构建完成，进入 agent",
+      );
 
       await this.hookBus.emit("before-agent", { userId, context });
 
       result = await this.agentRunner.run(context);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      const errorStack = err instanceof Error ? err.stack : undefined;
+      taskErr = err instanceof Error ? err : new Error(String(err));
+      const errorMessage = taskErr.message;
+      const errorStack = taskErr.stack;
       log.error(
         {
-          err,
+          phase: "kernel.tasking",
+          messageId,
           userId,
-          messageId: message.messageId,
-          errorMessage,
-          errorStack,
+          sessionId: session.id,
+          error: errorMessage,
+          stack: errorStack,
+          err,
         },
-        "Agent execution failed",
+        "[flow] agent 执行异常，将回复兜底文案",
       );
       await this.hookBus.emit("on-error", { error: err, userId });
       result = {
@@ -81,19 +112,22 @@ export class Tasking {
         toolCalls: [],
         tokensUsed: { input: 0, output: 0 },
       };
+    } finally {
+      span.end(taskErr);
     }
 
     const replyPreview =
       result.text.length > 100 ? `${result.text.slice(0, 100)}…` : result.text;
     log.info(
       {
+        phase: "kernel.tasking.done",
+        messageId,
         userId,
-        messageId: message.messageId,
         replyLen: result.text.length,
         toolCallsCount: result.toolCalls.length,
         replyPreview: replyPreview || "(empty)",
       },
-      "Task done, sending reply to Feishu",
+      "[flow] task 完成，即将发送回复",
     );
 
     await this.sessionManager.appendHistory(
